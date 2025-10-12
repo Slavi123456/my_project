@@ -1,8 +1,18 @@
 use std::{fmt::Display, sync::Arc};
 
-use serde::Deserialize;
+use serde::{Deserialize, de::DeserializeOwned};
 use tokio::sync::Mutex;
+////////////////////////////////////////////////////////////////////
+pub trait Extractable: DeserializeOwned + Sized {}
+////////////////////////////////////////////////////////////////////
+#[derive(Deserialize)]
+pub struct LoginInfo {
+    email: String,
+    password: String,
+}
 
+impl Extractable for LoginInfo {}
+////////////////////////////////////////////////////////////////////
 pub struct StoredUser {
     id: usize,
     base: User,
@@ -22,7 +32,7 @@ impl Display for StoredUser {
         write!(f, "Id: {} {}", self.id, self.base)
     }
 }
-
+////////////////////////////////////////////////////////////////////
 #[derive(Clone, Deserialize)]
 pub struct User {
     first_name: String,
@@ -32,14 +42,14 @@ pub struct User {
 }
 
 impl User {
-    pub fn new(first_name: String, last_name: String, email: String, password: String) -> Self {
-        Self {
-            first_name,
-            last_name,
-            email,
-            password,
-        }
-    }
+    // pub fn new(first_name: String, last_name: String, email: String, password: String) -> Self {
+    //     Self {
+    //         first_name,
+    //         last_name,
+    //         email,
+    //         password,
+    //     }
+    // }
     pub fn copy(user: User) -> Self {
         Self {
             first_name: user.first_name,
@@ -69,6 +79,10 @@ impl User {
 
         Ok(())
     }
+
+    pub fn match_credentials(&self, login: &LoginInfo) -> bool {
+        self.email == login.email && self.password == login.password
+    }
 }
 
 impl Display for User {
@@ -81,6 +95,8 @@ impl Display for User {
     }
 }
 
+impl Extractable for User {}
+////////////////////////////////////////////////////////////////////
 #[derive(Clone)]
 pub struct AppState {
     users: Arc<Mutex<Vec<StoredUser>>>,
@@ -100,6 +116,9 @@ impl AppState {
         }
 
         let mut users = self.users.lock().await;
+
+        //should make a validation for repeated users with one email
+
         let users_len = users.len();
         users.push(StoredUser::new(users_len, user));
     }
@@ -113,6 +132,7 @@ impl AppState {
 
         let mut users = self.users.lock().await;
 
+        //needs something like operator= in c++
         if let Some(user) = users.iter_mut().find(|u| u.id == target_id) {
             user.base.first_name = updated_user.first_name;
             user.base.last_name = updated_user.last_name;
@@ -138,5 +158,17 @@ impl AppState {
         for user in users.iter() {
             println!("{}", user)
         }
+    }
+
+    pub async fn find_user(&self, login: LoginInfo) -> Result<(), String> {
+        let users = self.users.lock().await;
+
+        if let Some(user) = users.iter().find(|u| u.base.match_credentials(&login)) {
+            println!("User is valid.");
+        } else {
+            return Err(format!("->> Error - User not found."));
+        }
+
+        Ok(())
     }
 }

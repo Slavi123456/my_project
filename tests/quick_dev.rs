@@ -22,16 +22,24 @@ async fn quick_dev() -> Result<()> {
     send_post("/home", &client, data).await?;
     // send_post("/home", &client, data).await?;
 
-    let put_data = r#"
-        {
-            "first_name": "Johny",
-            "last_name": "Doeee",
-            "email": "john@doe.com",
-            "password": "johnDoe12345"
-        }"#;
-
     //Put request for the home page
-    send_put("/home/0", &client, put_data).await?;
+    // let put_data = r#"
+    //     {
+    //         "first_name": "Johny",
+    //         "last_name": "Doeee",
+    //         "email": "john@doe.com",
+    //         "password": "johnDoe12345"
+    //     }"#;
+
+    // send_put("/home/0", &client, put_data).await?;
+
+    let login_data = r#"
+    {
+        "email": "john@doe.com",
+        "password": "johnDoe123"
+    }"#;
+    //Send post request for login
+    send_post("/login", &client, login_data).await?;
 
     Ok(())
 }

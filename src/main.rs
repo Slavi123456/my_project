@@ -7,7 +7,7 @@ use hyper::{
 };
 use tokio::fs::read_to_string;
 
-use crate::user::{AppState, User};
+use crate::user::{AppState, Extractable, LoginInfo, User};
 
 mod user;
 
@@ -41,14 +41,34 @@ async fn main_service(
     let req_path = request.uri().path();
 
     match (req_method, req_path) {
-        (&Method::GET, "/home") => home_page().await,
+        (&Method::GET, "/home") => home_page_get().await,
         (&Method::POST, "/home") => home_page_post(request, users_list).await,
         (&Method::PUT, req_path) if req_path.starts_with("/home/") => {
             home_page_put(request, users_list).await
         }
+        (&Method::POST, "/login") => login_page_post(request, users_list).await,
         _ => Ok(Response::new(Body::from("404 Not Found"))),
     }
 }
+async fn login_page_post(
+    request: Request<Body>,
+    users_list: AppState,
+) -> Result<Response<Body>, Infallible> {
+    println!("->> HANDLER - login_page_post");
+
+    let login: LoginInfo = match extract_from_request(request.into_body()).await {
+        Ok(u) => u,
+        Err(err) => return Ok(err),
+    };
+
+    //verify for existing login
+    if let Err(err_msg) = users_list.find_user(login).await {
+        return Ok(bad_request(&err_msg));
+    }
+
+    Ok(Response::new(Body::from("Successfully logged in")))
+}
+
 async fn home_page_put(
     request: Request<Body>,
     users_list: AppState,
@@ -60,7 +80,7 @@ async fn home_page_put(
     //println!("{:?}", path_segments);
 
     //Reading the request body
-    let user = match extract_user_from_request(body).await {
+    let user: User = match extract_from_request(body).await {
         Ok(u) => u,
         Err(err) => return Ok(err),
     };
@@ -83,7 +103,7 @@ async fn home_page_put(
     Ok(Response::new(Body::from("Succesful updated user")))
 }
 
-async fn home_page() -> Result<Response<Body>, Infallible> {
+async fn home_page_get() -> Result<Response<Body>, Infallible> {
     println!("->> HANDLER - home_page");
     let home_page = match read_to_string("./pages/home.html").await {
         Ok(content) => content,
@@ -104,7 +124,7 @@ async fn home_page_post(
 ) -> Result<Response<Body>, Infallible> {
     println!("->> HANDLER - home_page_post");
 
-    let user = match extract_user_from_request(request.into_body()).await {
+    let user: User = match extract_from_request(request.into_body()).await {
         Ok(u) => u,
         Err(err) => return Ok(err),
     };
@@ -122,7 +142,7 @@ async fn home_page_post(
     )))
 }
 
-async fn extract_user_from_request(body: Body) -> Result<User, Response<Body>> {
+async fn extract_from_request<T: Extractable>(body: Body) -> Result<T, Response<Body>> {
     let body_in_bytes = to_bytes(body).await.map_err(|err| {
         //handle error
         println!("->> Error in parsing request body {}", err);
