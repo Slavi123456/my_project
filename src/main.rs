@@ -1,9 +1,11 @@
 use std::{convert::Infallible, net::SocketAddr};
 
 use hyper::{
-    Body, Request, Response, Server,
+    Body, Method, Request, Response, Server, StatusCode,
+    body::to_bytes,
     service::{make_service_fn, service_fn},
 };
+use serde::Deserialize;
 use tokio::fs::read_to_string;
 
 #[tokio::main]
@@ -21,11 +23,13 @@ async fn main() {
 }
 
 async fn main_service(request: Request<Body>) -> Result<Response<Body>, Infallible> {
-    // Ok(Response::new(Body::from("Hello world!")))
-    if request.uri().path() == "/home" {
-        home_page().await
-    } else {
-        Ok(Response::new(Body::from("404 Not Found")))
+    let req_method = request.method();
+    let req_path = request.uri().path();
+
+    match (req_method, req_path) {
+        (&Method::GET, "/home") => home_page().await,
+        (&Method::POST, "/home") => home_page_post(request).await,
+        _ => Ok(Response::new(Body::from("404 Not Found"))),
     }
 }
 
@@ -42,4 +46,60 @@ async fn home_page() -> Result<Response<Body>, Infallible> {
     };
 
     Ok(Response::new(Body::from(home_page)))
+}
+
+async fn home_page_post(request: Request<Body>) -> Result<Response<Body>, Infallible> {
+    println!("->> HANDLER - home_page_post");
+
+    let req_body = match to_bytes(request.into_body()).await {
+        Ok(body) => body,
+        Err(err) => {
+            //handle error
+            println!(
+                "->> Error in home_page_post with parsing request body {}",
+                err
+            );
+
+            let error_response = Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .header("Content-Type", "text/plain")
+                .body(Body::from("Could not parse request body"))
+                .unwrap();
+
+            return Ok(error_response);
+        }
+    };
+
+    let parsed_body: User = match serde_json::from_slice(&req_body) {
+        Ok(user) => user,
+        Err(err) => {
+            //handle error
+            println!(
+                "->> Error in home_page_post with parsing json from bytes {}",
+                err
+            );
+
+            let error_response = Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .header("Content-Type", "text/plain")
+                .body(Body::from("Could not parse request body"))
+                .unwrap();
+
+            return Ok(error_response);
+        }
+    };
+    println!(
+        "Successfuly parsed username {:?} with password {:?} ",
+        parsed_body.username, parsed_body.password
+    );
+
+    Ok(Response::new(Body::from(
+        "Successfully parsed post request",
+    )))
+}
+
+#[derive(Deserialize)]
+struct User {
+    username: String,
+    password: String,
 }
