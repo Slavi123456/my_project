@@ -5,8 +5,11 @@ use hyper::{
     body::to_bytes,
     service::{make_service_fn, service_fn},
 };
-use serde::Deserialize;
 use tokio::fs::read_to_string;
+
+use crate::user::User;
+
+mod user;
 
 #[tokio::main]
 async fn main() {
@@ -51,55 +54,39 @@ async fn home_page() -> Result<Response<Body>, Infallible> {
 async fn home_page_post(request: Request<Body>) -> Result<Response<Body>, Infallible> {
     println!("->> HANDLER - home_page_post");
 
-    let req_body = match to_bytes(request.into_body()).await {
-        Ok(body) => body,
-        Err(err) => {
-            //handle error
-            println!(
-                "->> Error in home_page_post with parsing request body {}",
-                err
-            );
-
-            let error_response = Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .header("Content-Type", "text/plain")
-                .body(Body::from("Could not parse request body"))
-                .unwrap();
-
-            return Ok(error_response);
-        }
+    let user = match extract_user_from_request(request).await {
+        Ok(u) => u,
+        Err(err) => return Ok(err),
     };
+    println!("{}", user);
 
-    let parsed_body: User = match serde_json::from_slice(&req_body) {
-        Ok(user) => user,
-        Err(err) => {
-            //handle error
-            println!(
-                "->> Error in home_page_post with parsing json from bytes {}",
-                err
-            );
-
-            let error_response = Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .header("Content-Type", "text/plain")
-                .body(Body::from("Could not parse request body"))
-                .unwrap();
-
-            return Ok(error_response);
-        }
-    };
-    println!(
-        "Successfuly parsed username {:?} with password {:?} ",
-        parsed_body.username, parsed_body.password
-    );
+    //Validation
+    //Saving the user information
 
     Ok(Response::new(Body::from(
         "Successfully parsed post request",
     )))
 }
 
-#[derive(Deserialize)]
-struct User {
-    username: String,
-    password: String,
+async fn extract_user_from_request(request: Request<Body>) -> Result<User, Response<Body>> {
+    let req_body = to_bytes(request.into_body()).await.map_err(|err| {
+        //handle error
+        println!("->> Error in parsing request body {}", err);
+
+        bad_request("Could not parse request body")
+    })?;
+
+    serde_json::from_slice(&req_body).map_err(|err| {
+        //handle error
+        println!("->> Error in parsing json {}", err);
+        bad_request("Could not parse request body")
+    })
+}
+
+fn bad_request(msg: &str) -> Response<Body> {
+    Response::builder()
+        .status(StatusCode::BAD_REQUEST)
+        .header("Content-Type", "text/plain")
+        .body(Body::from(msg.to_string()))
+        .unwrap()
 }
