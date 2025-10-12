@@ -3,6 +3,26 @@ use std::{fmt::Display, sync::Arc};
 use serde::Deserialize;
 use tokio::sync::Mutex;
 
+pub struct StoredUser {
+    id: usize,
+    base: User,
+}
+
+impl StoredUser {
+    pub fn new(id: usize, base: User) -> Self {
+        Self {
+            id: id,
+            base: User::copy(base),
+        }
+    }
+}
+
+impl Display for StoredUser {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Id: {} {}", self.id, self.base)
+    }
+}
+
 #[derive(Clone, Deserialize)]
 pub struct User {
     first_name: String,
@@ -18,6 +38,14 @@ impl User {
             last_name,
             email,
             password,
+        }
+    }
+    pub fn copy(user: User) -> Self {
+        Self {
+            first_name: user.first_name,
+            last_name: user.last_name,
+            email: user.email,
+            password: user.password,
         }
     }
     pub fn validate(&self) -> Result<(), String> {
@@ -55,7 +83,7 @@ impl Display for User {
 
 #[derive(Clone)]
 pub struct AppState {
-    users: Arc<Mutex<Vec<User>>>,
+    users: Arc<Mutex<Vec<StoredUser>>>,
 }
 
 impl AppState {
@@ -72,14 +100,37 @@ impl AppState {
         }
 
         let mut users = self.users.lock().await;
-        users.push(user);
+        let users_len = users.len();
+        users.push(StoredUser::new(users_len, user));
     }
 
-    pub async fn get_all_users(&self) -> Vec<User> {
-        println!("->> HANDLER - get_all_users");
-        let users = self.users.lock().await;
-        users.clone()
+    pub async fn update_user(&self, updated_user: User, target_id: usize) -> Result<(), String> {
+        println!("->> HANDLER - update_user");
+
+        if let Err(err) = updated_user.validate() {
+            return Err(format!("->> ERROR - cannot update user {}", err));
+        }
+
+        let mut users = self.users.lock().await;
+
+        if let Some(user) = users.iter_mut().find(|u| u.id == target_id) {
+            user.base.first_name = updated_user.first_name;
+            user.base.last_name = updated_user.last_name;
+            user.base.password = updated_user.password;
+
+            println!("User updated.");
+        } else {
+            return Err(format!("->> Error - User not found."));
+        }
+
+        Ok(())
     }
+
+    // pub async fn get_all_users(&self) -> Vec<User> {
+    //     println!("->> HANDLER - get_all_users");
+    //     let users = self.users.lock().await;
+    //     users.clone()
+    // }
 
     pub async fn print_users(&self) {
         println!("->> HANDLER - print_users");

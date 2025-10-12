@@ -43,8 +43,44 @@ async fn main_service(
     match (req_method, req_path) {
         (&Method::GET, "/home") => home_page().await,
         (&Method::POST, "/home") => home_page_post(request, users_list).await,
+        (&Method::PUT, req_path) if req_path.starts_with("/home/") => {
+            home_page_put(request, users_list).await
+        }
         _ => Ok(Response::new(Body::from("404 Not Found"))),
     }
+}
+async fn home_page_put(
+    request: Request<Body>,
+    users_list: AppState,
+) -> Result<Response<Body>, Infallible> {
+    println!("->> HANDLER - home_page_put");
+
+    let (path, body) = request.into_parts();
+    let path_segments = path.uri.path().split("/").collect::<Vec<&str>>();
+    //println!("{:?}", path_segments);
+
+    //Reading the request body
+    let user = match extract_user_from_request(body).await {
+        Ok(u) => u,
+        Err(err) => return Ok(err),
+    };
+
+    //Validation
+    if let Err(err_msg) = user.validate() {
+        return Ok(bad_request(&err_msg));
+    }
+
+    //Updating the user
+    if let Err(err_msg) = users_list
+        .update_user(user, path_segments[2].parse::<usize>().unwrap())
+        .await
+    {
+        return Ok(bad_request(&err_msg));
+    }
+
+    users_list.print_users().await;
+
+    Ok(Response::new(Body::from("Succesful updated user")))
 }
 
 async fn home_page() -> Result<Response<Body>, Infallible> {
@@ -68,7 +104,7 @@ async fn home_page_post(
 ) -> Result<Response<Body>, Infallible> {
     println!("->> HANDLER - home_page_post");
 
-    let user = match extract_user_from_request(request).await {
+    let user = match extract_user_from_request(request.into_body()).await {
         Ok(u) => u,
         Err(err) => return Ok(err),
     };
@@ -86,15 +122,15 @@ async fn home_page_post(
     )))
 }
 
-async fn extract_user_from_request(request: Request<Body>) -> Result<User, Response<Body>> {
-    let req_body = to_bytes(request.into_body()).await.map_err(|err| {
+async fn extract_user_from_request(body: Body) -> Result<User, Response<Body>> {
+    let body_in_bytes = to_bytes(body).await.map_err(|err| {
         //handle error
         println!("->> Error in parsing request body {}", err);
 
         bad_request("Could not parse request body")
     })?;
 
-    serde_json::from_slice(&req_body).map_err(|err| {
+    serde_json::from_slice(&body_in_bytes).map_err(|err| {
         //handle error
         println!("->> Error in parsing json {}", err);
         bad_request("Could not parse request body")

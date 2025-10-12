@@ -1,15 +1,14 @@
 use anyhow::{Context, Result};
 use hyper::{
-    Body, Client, Method, Request, Response, Uri,
-    body::to_bytes,
-    client::{self, HttpConnector},
+    Body, Client, Method, Request, Response, Uri, body::to_bytes, client::HttpConnector,
     header::CONTENT_TYPE,
 };
 
 #[tokio::test]
 async fn quick_dev() -> Result<()> {
     let client = Client::new();
-    send_get("/home", &client).await?;
+    //Get request for the home page
+    // send_get("/home", &client).await?;
 
     //Post request for the home page
     let data = r#"
@@ -21,10 +20,38 @@ async fn quick_dev() -> Result<()> {
         }"#;
 
     send_post("/home", &client, data).await?;
-    send_post("/home", &client, data).await?;
+    // send_post("/home", &client, data).await?;
+
+    let put_data = r#"
+        {
+            "first_name": "Johny",
+            "last_name": "Doeee",
+            "email": "john@doe.com",
+            "password": "johnDoe12345"
+        }"#;
+
+    //Put request for the home page
+    send_put("/home/0", &client, put_data).await?;
 
     Ok(())
 }
+async fn send_put(path: &str, client: &Client<HttpConnector>, data: &str) -> Result<()> {
+    let uri = make_uri(path)?;
+    let req = Request::builder()
+        .method(&Method::PUT)
+        .uri(uri)
+        .header(CONTENT_TYPE, "application/json")
+        .body(Body::from(data.to_owned()))
+        .unwrap();
+
+    let resp = client
+        .request(req)
+        .await
+        .context("Failed to send PUT request")?;
+
+    parse_response(resp).await
+}
+
 async fn send_post(path: &str, client: &Client<HttpConnector>, data: &str) -> Result<()> {
     let uri = make_uri(path)?;
     let req = Request::builder()
@@ -37,7 +64,7 @@ async fn send_post(path: &str, client: &Client<HttpConnector>, data: &str) -> Re
     let resp = client
         .request(req)
         .await
-        .context("Failed to send GET request")?;
+        .context("Failed to send POST request")?;
 
     parse_response(resp).await
 }
