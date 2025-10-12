@@ -1,42 +1,56 @@
 use anyhow::{Context, Result};
-use hyper::{Body, Client, Method, Request, Response, Uri, body::to_bytes, header::CONTENT_TYPE};
+use hyper::{
+    Body, Client, Method, Request, Response, Uri,
+    body::to_bytes,
+    client::{self, HttpConnector},
+    header::CONTENT_TYPE,
+};
 
 #[tokio::test]
 async fn quick_dev() -> Result<()> {
     let client = Client::new();
-
-    //Get request for the home page
-    let home_uri = make_uri("/home")?;
-    let home_resp_get = client
-        .get(home_uri)
-        .await
-        .context("Failed to send GET request")?;
-
-    parse_response(home_resp_get).await?;
+    send_get("/home", &client).await?;
 
     //Post request for the home page
     let data = r#"
         {
-            "username": "John",
-            "password": "Doe"
+            "first_name": "John",
+            "last_name": "Doe",
+            "email": "john@doe.com",
+            "password": "johnDoe123"
         }"#;
 
-    let home_uri = make_uri("/home")?;
-    let home_post_req = Request::builder()
+    send_post("/home", &client, data).await?;
+    send_post("/home", &client, data).await?;
+
+    Ok(())
+}
+async fn send_post(path: &str, client: &Client<HttpConnector>, data: &str) -> Result<()> {
+    let uri = make_uri(path)?;
+    let req = Request::builder()
         .method(&Method::POST)
-        .uri(home_uri)
+        .uri(uri)
         .header(CONTENT_TYPE, "application/json")
-        .body(Body::from(data))
+        .body(Body::from(data.to_owned()))
         .unwrap();
 
-    let home_resp_post = client
-        .request(home_post_req)
+    let resp = client
+        .request(req)
         .await
         .context("Failed to send GET request")?;
 
-    parse_response(home_resp_post).await?;
+    parse_response(resp).await
+}
 
-    Ok(())
+async fn send_get(path: &str, client: &Client<HttpConnector>) -> Result<()> {
+    //Get request for the home page
+    let uri = make_uri(path)?;
+    let resp = client
+        .get(uri)
+        .await
+        .context("Failed to send GET request")?;
+
+    parse_response(resp).await
 }
 
 fn make_uri(path: &str) -> Result<Uri, anyhow::Error> {

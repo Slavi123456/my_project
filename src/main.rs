@@ -7,7 +7,7 @@ use hyper::{
 };
 use tokio::fs::read_to_string;
 
-use crate::user::User;
+use crate::user::{AppState, User};
 
 mod user;
 
@@ -17,21 +17,32 @@ async fn main() {
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     println!("->> LISTENING on http://{addr}");
 
+    let app_state = AppState::new().await;
+
     //Creating a service which will be our handler for requests
-    let make_service =
-        make_service_fn(|socket| async move { Ok::<_, Infallible>(service_fn(main_service)) });
+    let make_service = make_service_fn(move |_socket| {
+        let app_state = app_state.clone();
+        async move {
+            Ok::<_, Infallible>(service_fn(move |request: Request<Body>| {
+                main_service(request, app_state.clone())
+            }))
+        }
+    });
 
     //Starting the server
     Server::bind(&addr).serve(make_service).await.unwrap();
 }
 
-async fn main_service(request: Request<Body>) -> Result<Response<Body>, Infallible> {
+async fn main_service(
+    request: Request<Body>,
+    users_list: AppState,
+) -> Result<Response<Body>, Infallible> {
     let req_method = request.method();
     let req_path = request.uri().path();
 
     match (req_method, req_path) {
         (&Method::GET, "/home") => home_page().await,
-        (&Method::POST, "/home") => home_page_post(request).await,
+        (&Method::POST, "/home") => home_page_post(request, users_list).await,
         _ => Ok(Response::new(Body::from("404 Not Found"))),
     }
 }
@@ -51,17 +62,24 @@ async fn home_page() -> Result<Response<Body>, Infallible> {
     Ok(Response::new(Body::from(home_page)))
 }
 
-async fn home_page_post(request: Request<Body>) -> Result<Response<Body>, Infallible> {
+async fn home_page_post(
+    request: Request<Body>,
+    users_list: AppState,
+) -> Result<Response<Body>, Infallible> {
     println!("->> HANDLER - home_page_post");
 
     let user = match extract_user_from_request(request).await {
         Ok(u) => u,
         Err(err) => return Ok(err),
     };
-    println!("{}", user);
 
     //Validation
+    if let Err(err_msg) = user.validate() {
+        return Ok(bad_request(&err_msg));
+    }
     //Saving the user information
+    users_list.add_user(user).await;
+    users_list.print_users().await;
 
     Ok(Response::new(Body::from(
         "Successfully parsed post request",
