@@ -25,29 +25,29 @@ async fn quick_dev() -> Result<()> {
     // send_post("/home", &client, data).await?;
 
     //Put request for the home page
-    // let put_data = r#"
-    //     {
-    //         "first_name": "Johny",
-    //         "last_name": "Doeee",
-    //         "email": "john@doe.com",
-    //         "password": "johnDoe12345"
-    //     }"#;
+    let put_data = r#"
+        {
+            "first_name": "Johny",
+            "last_name": "Doeee",
+            "email": "john@doe.com",
+            "password": "johnDoe12345"
+        }"#;
 
-    // send_put("/home/0", &client, put_data).await?;
+    send_put("/home/0", &client, put_data).await?;
 
-    let login_data = r#"
-    {
-        "email": "john@doe.com",
-        "password": "johnDoe123"
-    }"#;
     //Send post request for login
-    send_post("/login", &client, login_data, None).await?;
+    // let login_data = r#"
+    // {
+    //     "email": "john@doe.com",
+    //     "password": "johnDoe123"
+    // }"#;
+    // send_post("/login", &client, login_data, None).await?;
 
     //Checking if the cookie works
     // send_post("/login", &client, login_data, Some("0")).await?;
 
     //Sending delete request
-    send_delete("/logout", &client, Some("0")).await?;
+    // send_delete("/logout", &client, Some("0")).await?;
 
     Ok(())
 }

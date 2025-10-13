@@ -1,6 +1,7 @@
 use std::{fmt::Display, sync::Arc};
 
 use serde::{Deserialize, de::DeserializeOwned};
+use sqlx::MySqlPool;
 use tokio::sync::Mutex;
 ////////////////////////////////////////////////////////////////////
 pub trait Extractable: DeserializeOwned + Sized {}
@@ -128,16 +129,23 @@ impl Display for Session {
 pub struct AppState {
     users: Arc<Mutex<Vec<StoredUser>>>,
     sessions: Arc<Mutex<Vec<Session>>>,
+    db: Option<MySqlPool>,
 }
 
 impl AppState {
-    pub async fn new() -> Self {
-        Self {
-            users: Arc::new(Mutex::new(Vec::new())),
-            sessions: Arc::new(Mutex::new(Vec::new())),
+    pub async fn new(db_url: &str) -> Result<Self, sqlx::Error> {
+        let db_pool = MySqlPool::connect(db_url).await;
+
+        match db_pool {
+            Ok(db) => Ok(Self {
+                users: Arc::new(Mutex::new(Vec::new())),
+                sessions: Arc::new(Mutex::new(Vec::new())),
+                db: Some(db),
+            }),
+            Err(error) => Err(error),
         }
     }
-    pub async fn add_user(&self, user: User) {
+    pub async fn add_user(&self, user: User) -> Result<(), sqlx::Error> {
         println!("->> HANDLER - add_user");
 
         if let Err(err) = user.validate() {
@@ -149,9 +157,51 @@ impl AppState {
         //should make a validation for repeated users with one email
 
         let users_len = users.len();
+        let user_for_db = user.clone();
         users.push(StoredUser::new(users_len, user));
-    }
 
+        //add user to the data base
+        match &self.db {
+            Some(pool) => {
+                sqlx::query(
+            "INSERT INTO users (id, first_name, last_name, email, password) VALUES (?, ?, ?, ?, ?)",
+                )
+                .bind(&users_len.to_string())
+                .bind(&user_for_db.first_name)
+                .bind(&user_for_db.last_name)
+                .bind(&user_for_db.email)
+                .bind(&user_for_db.password)
+                .execute(pool)
+                .await
+                .map_err(|e| {
+                    println!("Error inserting user into DB: {}", e);
+                    e 
+                })?;
+            }
+            None => {
+                println!("->>Error with accessing the db");
+            }
+        }
+        //print the user_count
+        self.print_db_user_count().await;
+
+        Ok(())
+    }
+    pub async fn print_db_user_count(&self) {
+        match &self.db {
+            Some(pool) => {
+                let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+                    .fetch_one(pool)
+                    .await
+                    .unwrap();
+
+                println!("Total users in db: {}", row.0);
+            }
+            None => {
+                println!("->>Error with accessing the db");
+            }
+        }
+    }
     pub async fn update_user(&self, updated_user: User, target_id: usize) -> Result<(), String> {
         println!("->> HANDLER - update_user");
 
@@ -160,6 +210,7 @@ impl AppState {
         }
 
         let mut users = self.users.lock().await;
+        let user_for_db = updated_user.clone();
 
         //needs something like operator= in c++
         if let Some(user) = users.iter_mut().find(|u| u.id == target_id) {
@@ -170,6 +221,31 @@ impl AppState {
             println!("User updated.");
         } else {
             return Err(format!("->> Error - User not found."));
+        }
+
+        //update in the database
+        match &self.db {
+            Some(pool) => {
+
+                //should fix the unwrap here to someting smarter
+                sqlx::query(
+                    "UPDATE users SET first_name = ?, last_name = ?, email = ?, password = ? WHERE id = ?"
+                )
+                .bind(&user_for_db.first_name)
+                .bind(&user_for_db.last_name)
+                .bind(&user_for_db.email)
+                .bind(&user_for_db.password)
+                .bind(target_id.to_string())
+                .execute(pool)
+                .await
+                .map_err(|e| {
+                    format!("Error updating user into DB: {}", e)
+                     
+                }).unwrap();
+            }
+            None => {
+                println!("->>Error with accessing the db");
+            }
         }
 
         Ok(())

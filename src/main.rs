@@ -6,6 +6,7 @@ use hyper::{
     header::{COOKIE, HeaderValue, SET_COOKIE},
     service::{make_service_fn, service_fn},
 };
+use sqlx::MySqlPool;
 use tokio::fs::read_to_string;
 
 use crate::user::{AppState, Extractable, LoginInfo, User};
@@ -14,11 +15,20 @@ mod user;
 
 #[tokio::main]
 async fn main() {
+    // Hardcoded connection string
+    let db_url = "mysql://root:rootpassword@localhost:3306/mydb";
+
+    let app_state = match AppState::new(db_url).await {
+        Ok(app_state) => app_state,
+        Err(error) => {
+            println!("->> Error building the AppState error {}", error);
+            return;
+        }
+    };
+
     //Set up the addres for the server
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     println!("->> LISTENING on http://{addr}");
-
-    let app_state = AppState::new().await;
 
     //Creating a service which will be our handler for requests
     let make_service = make_service_fn(move |_socket| {
@@ -67,7 +77,7 @@ async fn logout_page_delete(
         if let Ok(cookie_str) = cookie_header.to_str() {
             // Extract session_id from the cookie string
             if let Some(session_id) = extract_session_id(cookie_str) {
-                println!("Session ID found: {}", session_id);
+                println!("->> Session ID found: {}", session_id);
 
                 users_list.delete_session(&session_id).await;
                 users_list.print_sessions().await;
@@ -233,7 +243,9 @@ async fn home_page_post(
         return Ok(bad_request(&err_msg));
     }
     //Saving the user information
-    users_list.add_user(user).await;
+    if let Err(err) = users_list.add_user(user).await {
+        return Ok(bad_request(&format!("{}", err)));
+    }
     users_list.print_users().await;
 
     Ok(Response::new(Body::from(
