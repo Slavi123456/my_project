@@ -1,7 +1,9 @@
 use anyhow::{Context, Result};
 use hyper::{
-    Body, Client, Method, Request, Response, Uri, body::to_bytes, client::HttpConnector,
-    header::CONTENT_TYPE,
+    Body, Client, Method, Request, Response, Uri,
+    body::to_bytes,
+    client::HttpConnector,
+    header::{self, CONTENT_TYPE, COOKIE, HeaderValue},
 };
 
 #[tokio::test]
@@ -19,7 +21,7 @@ async fn quick_dev() -> Result<()> {
             "password": "johnDoe123"
         }"#;
 
-    send_post("/home", &client, data).await?;
+    send_post("/home", &client, data, None).await?;
     // send_post("/home", &client, data).await?;
 
     //Put request for the home page
@@ -39,7 +41,8 @@ async fn quick_dev() -> Result<()> {
         "password": "johnDoe123"
     }"#;
     //Send post request for login
-    send_post("/login", &client, login_data).await?;
+    send_post("/login", &client, login_data, None).await?;
+    send_post("/login", &client, login_data, Some("0")).await?;
 
     Ok(())
 }
@@ -60,12 +63,25 @@ async fn send_put(path: &str, client: &Client<HttpConnector>, data: &str) -> Res
     parse_response(resp).await
 }
 
-async fn send_post(path: &str, client: &Client<HttpConnector>, data: &str) -> Result<()> {
+async fn send_post(
+    path: &str,
+    client: &Client<HttpConnector>,
+    data: &str,
+    session_id: Option<&str>,
+) -> Result<()> {
     let uri = make_uri(path)?;
+
+    //Adding the optional session_id
+    let cookie = match session_id {
+        Some(id) => HeaderValue::from_str(&format!("session_id={};", id)).unwrap(),
+        None => HeaderValue::from_str("No cookies here").unwrap(),
+    };
+
     let req = Request::builder()
         .method(&Method::POST)
         .uri(uri)
         .header(CONTENT_TYPE, "application/json")
+        .header(COOKIE, cookie)
         .body(Body::from(data.to_owned()))
         .unwrap();
 
@@ -95,14 +111,21 @@ fn make_uri(path: &str) -> Result<Uri, anyhow::Error> {
 }
 
 async fn parse_response(response: Response<Body>) -> Result<()> {
-    let resp_statuc = response.status();
-    let resp_body = to_bytes(response.into_body())
+    let (parts, body) = response.into_parts();
+
+    let resp_statuc = parts.status;
+    let resp_header = parts.headers;
+    let resp_body = to_bytes(body)
         .await
         .context("Failed to read response body")?;
     let body_to_str = String::from_utf8_lossy(&resp_body);
 
     println!("=== HTTP Response Report ===");
     println!("Statuc code {}", resp_statuc);
+    println!("Headers: ");
+    for (key, value) in resp_header.iter() {
+        println!("{}, {}", key, value.to_str().unwrap_or("invalid"));
+    }
     println!("===Response body=== \n");
     println!("{}", &body_to_str);
 
