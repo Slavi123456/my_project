@@ -48,21 +48,48 @@ async fn main_service(
             home_page_put(request, users_list).await
         }
         (&Method::POST, "/login") => login_page_post(request, users_list).await,
-        (&Method::POST, "/logout") => logout_page_post(request, users_list).await,
+        (&Method::DELETE, "/logout") => logout_page_delete(request, users_list).await,
         _ => Ok(Response::new(Body::from("404 Not Found"))),
     }
 }
-async fn logout_page_post(
+async fn logout_page_delete(
     request: Request<Body>,
-    users_list: AppState,
+    mut users_list: AppState,
 ) -> Result<Response<Body>, Infallible> {
-    println!("->> HANDLER - login_page_post");
+    println!("->> HANDLER - logout_page_post");
 
-    //parse the request 
-    //get the session_id
-    //delete it if valid
+    let (parts, body) = request.into_parts();
 
-    return Ok(Response::new(Body::from("Successfuly logged out")));
+    //Checking for already existing session
+    let header = parts.headers.get(COOKIE);
+
+    if let Some(cookie_header) = header {
+        if let Ok(cookie_str) = cookie_header.to_str() {
+            // Extract session_id from the cookie string
+            if let Some(session_id) = extract_session_id(cookie_str) {
+                println!("Session ID found: {}", session_id);
+
+                users_list.delete_session(&session_id).await;
+                users_list.print_sessions().await;
+
+                let cookie = format!("session_id=; HttpOnly; Path=/; Max-Age=0");
+
+                let response = Response::builder()
+                    .status(StatusCode::OK)
+                    .header(SET_COOKIE, HeaderValue::from_str(&cookie).unwrap())
+                    .body(Body::from("Successfully logged in"))
+                    .unwrap();
+
+                return Ok(response);
+            } else {
+                return Ok(bad_request("No session ID in cookie"));
+            }
+        } else {
+            return Ok(bad_request("Invalid cookie header"));
+        }
+    }
+
+    return Ok(bad_request("No cookie found"));
 }
 async fn login_page_post(
     request: Request<Body>,

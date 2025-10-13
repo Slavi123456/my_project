@@ -226,6 +226,6 @@ impl AppState {
         println!("->> HANDLER - delete_session");
         let mut sessions = self.sessions.lock().await;
 
-        sessions.retain(|s| s.session_id == target_session);
+        sessions.retain(|s| s.session_id != target_session);
     }
 }

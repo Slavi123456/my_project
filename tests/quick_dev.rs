@@ -42,10 +42,43 @@ async fn quick_dev() -> Result<()> {
     }"#;
     //Send post request for login
     send_post("/login", &client, login_data, None).await?;
-    send_post("/login", &client, login_data, Some("0")).await?;
+
+    //Checking if the cookie works
+    // send_post("/login", &client, login_data, Some("0")).await?;
+
+    //Sending delete request
+    send_delete("/logout", &client, Some("0")).await?;
 
     Ok(())
 }
+async fn send_delete(
+    path: &str,
+    client: &Client<HttpConnector>,
+    session_id: Option<&str>,
+) -> Result<()> {
+    let uri = make_uri(path)?;
+
+    //Adding the optional session_id
+    let cookie = match session_id {
+        Some(id) => HeaderValue::from_str(&format!("session_id={};", id)).unwrap(),
+        None => HeaderValue::from_str("No cookies here").unwrap(),
+    };
+
+    let req = Request::builder()
+        .method(&Method::DELETE)
+        .uri(uri)
+        .header(COOKIE, cookie)
+        .body(Body::from("Loggin out"))
+        .unwrap();
+
+    let resp = client
+        .request(req)
+        .await
+        .context("Failed to send POST request")?;
+
+    parse_response(resp).await
+}
+
 async fn send_put(path: &str, client: &Client<HttpConnector>, data: &str) -> Result<()> {
     let uri = make_uri(path)?;
     let req = Request::builder()
