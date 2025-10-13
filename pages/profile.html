@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile</title>
+    <link rel="stylesheet" type="text/css" href="./loginPageStyle.css">
+
+</head>
+<body>
+
+    <div class="container">
+        <h2>Update Your Profile</h2>
+
+        <form action="/profile" method="POST">
+            <input type="hidden" name="_method" value="PUT">
+
+            <input type="text" name="first_name" id="first_name" placeholder="Enter your first name" required>
+            <input type="text" name="last_name" id="last_name" placeholder="Enter your last name" required>
+            <input type="email" name="email" id="email" placeholder="Enter your email" required>
+            <input type="password" name="password" id="password" placeholder="Enter your password" required>
+
+
+            <button type="submit">Save Changes</button>
+
+            <button type="button" class="cancel-btn" onclick="window.location.href='/home'">Cancel</button>
+        </form>
+    </div>
+
+    <script>
+        //Prefilling
+        window.onload = function() {
+            const userData = {
+                first_name: "John",
+                last_name: "Doe",
+                email: "john.doe@example.com",
+                password: ""
+            };
+
+            document.getElementById('first_name').value = userData.first_name;
+            document.getElementById('last_name').value = userData.last_name;
+            document.getElementById('email').value = userData.email;
+            document.getElementById('password').value = userData.password;
+        }
+
+        
+    </script>
+
+</body>
+</html>
