@@ -145,6 +145,13 @@ impl AppState {
             Err(error) => Err(error),
         }
     }
+    pub async fn new_without_db() -> Result<Self, sqlx::Error> {
+        Ok(Self {
+                users: Arc::new(Mutex::new(Vec::new())),
+                sessions: Arc::new(Mutex::new(Vec::new())),
+                db: None,
+            })
+    }
     pub async fn add_user(&self, user: User) -> Result<(), sqlx::Error> {
         println!("->> HANDLER - add_user");
 

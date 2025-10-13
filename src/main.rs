@@ -1,12 +1,16 @@
-use std::{convert::Infallible, net::SocketAddr};
+use std::{
+    convert::Infallible,
+    fs::{self, read},
+    net::SocketAddr,
+    path::PathBuf,
+};
 
 use hyper::{
     Body, Method, Request, Response, Server, StatusCode,
     body::to_bytes,
-    header::{COOKIE, HeaderValue, SET_COOKIE},
+    header::{COOKIE, HeaderValue, LOCATION, SET_COOKIE},
     service::{make_service_fn, service_fn},
 };
-use sqlx::MySqlPool;
 use tokio::fs::read_to_string;
 
 use crate::user::{AppState, Extractable, LoginInfo, User};
@@ -16,9 +20,10 @@ mod user;
 #[tokio::main]
 async fn main() {
     // Hardcoded connection string
-    let db_url = "mysql://root:rootpassword@localhost:3306/mydb";
+    let _db_url = "mysql://root:rootpassword@localhost:3306/mydb";
 
-    let app_state = match AppState::new(db_url).await {
+    let app_state = match AppState::new_without_db().await {
+        //AppState::new(db_url).await {
         Ok(app_state) => app_state,
         Err(error) => {
             println!("->> Error building the AppState error {}", error);
@@ -52,16 +57,73 @@ async fn main_service(
     let req_path = request.uri().path();
 
     match (req_method, req_path) {
-        (&Method::GET, "/home") => home_page_get().await,
+        (&Method::GET, "/") => main_page_get().await,
+        (&Method::GET, "/home") => page_get("home.html").await,
         (&Method::POST, "/home") => home_page_post(request, users_list).await,
         (&Method::PUT, req_path) if req_path.starts_with("/home/") => {
             home_page_put(request, users_list).await
         }
+        (&Method::GET, "/login") => page_get("login.html").await,
         (&Method::POST, "/login") => login_page_post(request, users_list).await,
         (&Method::DELETE, "/logout") => logout_page_delete(request, users_list).await,
+        (&Method::GET, "/register") => page_get("register.html").await,
+
+        (&Method::GET, "/loginPageStyle.css") => handle_static_file("loginPageStyle.css").await,
+
         _ => Ok(Response::new(Body::from("404 Not Found"))),
     }
 }
+async fn page_get(page: &str) -> Result<Response<Body>, Infallible> {
+    println!("->> HANDLER - get_page - {}", page);
+
+    let page = match read_to_string(format!("./pages/{}", page)).await {
+        Ok(content) => content,
+        Err(err) => {
+            //Handle the error
+            println!("->> Error in home_page {}", err);
+
+            "<html><body>base</body></html>".to_string()
+        }
+    };
+
+    Ok(Response::new(Body::from(page)))
+}
+
+async fn handle_static_file(path: &str) -> Result<Response<Body>, Infallible> {
+    println!("->> HANDLER - handle_static_file");
+
+    let mut file_path = PathBuf::from("./pages");
+    file_path.push(path);
+
+    match read(&file_path) {
+        Ok(content) => {
+            let mime_type = if path.ends_with(".css") {
+                "text/css"
+            } else {
+                "text/plain"
+            };
+
+            Ok(Response::builder()
+                .status(StatusCode::OK)
+                .header("Content-Type", mime_type)
+                .body(Body::from(content))
+                .unwrap())
+        }
+        Err(_) => Ok(bad_request("Failed to load css")),
+    }
+}
+
+async fn main_page_get() -> Result<Response<Body>, Infallible> {
+    println!("->> HANDLER - main_page_get");
+
+    let respone = Response::builder()
+        .status(StatusCode::FOUND)
+        .header(LOCATION, "/login")
+        .body(Body::empty())
+        .unwrap();
+    Ok(respone)
+}
+
 async fn logout_page_delete(
     request: Request<Body>,
     mut users_list: AppState,
@@ -101,6 +163,7 @@ async fn logout_page_delete(
 
     return Ok(bad_request("No cookie found"));
 }
+
 async fn login_page_post(
     request: Request<Body>,
     users_list: AppState,
@@ -210,21 +273,6 @@ async fn home_page_put(
     users_list.print_users().await;
 
     Ok(Response::new(Body::from("Succesful updated user")))
-}
-
-async fn home_page_get() -> Result<Response<Body>, Infallible> {
-    println!("->> HANDLER - home_page");
-    let home_page = match read_to_string("./pages/home.html").await {
-        Ok(content) => content,
-        Err(err) => {
-            //Handle the error
-            println!("->> Error in home_page {}", err);
-
-            "<html><body>base</body></html>".to_string()
-        }
-    };
-
-    Ok(Response::new(Body::from(home_page)))
 }
 
 async fn home_page_post(
