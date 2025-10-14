@@ -241,6 +241,7 @@ impl AppState {
         if let Some(user) = users.iter_mut().find(|u| u.id == target_id) {
             user.base.first_name = updated_user.first_name;
             user.base.last_name = updated_user.last_name;
+            user.base.email = updated_user.email;
             user.base.password = updated_user.password;
 
             println!("User updated.");

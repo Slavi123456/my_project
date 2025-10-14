@@ -11,8 +11,27 @@
 
     <div class="container">
         <h1>Welcome to Your Profile</h1>
-        <button class="button" onclick="window.location.href='/profile'">View Profile</button>            
+        <button class="button" onclick="window.location.href='/profile'">View Profile</button>
+        <button class="button" onclick="logout(event)">Logout</button>            
+            
     </div>
+    <script> 
+        async function logout(event) {
+            event.preventDefault();
+            
+            const response = await fetch ('/logout', {
+                method: 'DELETE',
+                credentials: 'include'
+            });
 
+    
+            if (response.status === 302 || response.redirected) {
+                window.location.href = "/login";
+            } else {
+                const result = await response.text();
+                console.log(result);
+            }
+        }
+    </script>
 </body>
 </html>

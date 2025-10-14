@@ -17,8 +17,8 @@ async fn main() {
     // Hardcoded connection string
     let _db_url = "mysql://root:rootpassword@localhost:3306/mydb";
 
-    let app_state = match AppState::new_without_db().await {
-        //AppState::new(db_url).await {
+    //There is also AppState::new_without_db() for trying withot the database saving
+    let app_state = match AppState::new(_db_url).await {
         Ok(app_state) => app_state,
         Err(error) => {
             println!("->> Error building the AppState error {}", error);
@@ -185,7 +185,7 @@ async fn logout_page_delete(
 ) -> Result<Response<Body>, Infallible> {
     println!("->> HANDLER - logout_page_post");
 
-    let (parts, body) = request.into_parts();
+    let (parts, _body) = request.into_parts();
 
     //Checking for already existing session
     let session_id = match extract_session_id_from_header(&parts.headers) {
@@ -196,12 +196,14 @@ async fn logout_page_delete(
     users_list.delete_session(&session_id).await;
     users_list.print_sessions().await;
 
+    //Transfer to the login page with expired cookie
     let cookie = format!("session_id=; HttpOnly; Path=/; Max-Age=0");
 
     let resp = Response::builder()
-        .status(StatusCode::OK)
+        .status(StatusCode::FOUND)
+        .header(LOCATION, "/login")
         .header(SET_COOKIE, HeaderValue::from_str(&cookie).unwrap())
-        .body(Body::from("Successfully logged in"))
+        .body(Body::from("Successfully logged out"))
         .unwrap();
 
     Ok(resp)
