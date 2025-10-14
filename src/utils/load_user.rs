@@ -6,9 +6,8 @@ use hyper::{
 };
 
 use crate::{
-    extract_session_id_from_header,
     structs::{app_state::AppState, user::UserProfile},
-    utils::bad_request,
+    utils::{bad_request, extract_session_id_from_header},
 };
 
 pub async fn load_user_data(
