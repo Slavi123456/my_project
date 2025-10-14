@@ -3,7 +3,7 @@ use hyper::{
     Body, Client, Method, Request, Response, Uri,
     body::to_bytes,
     client::HttpConnector,
-    header::{self, CONTENT_TYPE, COOKIE, HeaderValue},
+    header::{CONTENT_TYPE, COOKIE, HeaderValue},
 };
 
 #[tokio::test]

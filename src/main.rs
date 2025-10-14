@@ -1,4 +1,4 @@
-use std::{convert::Infallible, fs::read, net::SocketAddr, path::PathBuf};
+use std::{convert::Infallible, net::SocketAddr};
 
 use hyper::{
     Body, HeaderMap, Method, Request, Response, Server, StatusCode,
@@ -8,9 +8,18 @@ use hyper::{
 };
 use tokio::fs::read_to_string;
 
-use crate::user::{AppState, Extractable, LoginInfo, User};
+use crate::{
+    structs::{
+        app_state::AppState,
+        login::LoginInfo,
+        traits::Extractable,
+        user::{User, UserProfile},
+    },
+    utils::{bad_request, extract_from_request, handle_static_file, load_user_data},
+};
 
-mod user;
+mod structs;
+mod utils;
 
 #[tokio::main]
 async fn main() {
@@ -74,59 +83,6 @@ async fn main_service(
         _ => Ok(Response::new(Body::from("404 Not Found"))),
     }
 }
-async fn load_user_data(
-    request: Request<Body>,
-    users_list: AppState,
-) -> Result<Response<Body>, Infallible> {
-    println!("->> HANDLER - load_user_data");
-
-    let (parts, _body) = request.into_parts();
-
-    let session_id = match extract_session_id_from_header(&parts.headers) {
-        Ok(id) => id,
-        Err(err) => {
-            return Ok(err);
-        }
-    };
-    //Validate the session if not return to the login page
-    if !users_list.is_session_valid(&session_id).await {
-        let cookie = format!("session_id=; HttpOnly; Path=/; Max-Age=0");
-        let response = Response::builder()
-            .status(StatusCode::FOUND)
-            .header(SET_COOKIE, HeaderValue::from_str(&cookie).unwrap())
-            .header(LOCATION, "/login")
-            .body(Body::from("Invalid session"))
-            .unwrap();
-
-        return Ok(response);
-    }
-
-    //get User profile from session id
-    let user_profile = match users_list
-        .get_user_profile_from_session_id(&session_id)
-        .await
-    {
-        Ok(profile) => profile,
-        Err(err) => return Ok(bad_request(&err)),
-    };
-
-    //Make json
-    let profile_json = match serde_json::to_string(&user_profile) {
-        Ok(json) => json,
-        Err(err) => {
-            println!("Error in parsing UserProfile to json");
-            return Ok(bad_request(&err.to_string()));
-        }
-    };
-
-    let response = Response::builder()
-        .status(StatusCode::OK)
-        .header(CONTENT_TYPE, "application/json")
-        .body(Body::from(profile_json))
-        .unwrap();
-
-    Ok(response)
-}
 
 async fn page_get(page: &str) -> Result<Response<Body>, Infallible> {
     println!("->> HANDLER - get_page - {}", page);
@@ -142,30 +98,6 @@ async fn page_get(page: &str) -> Result<Response<Body>, Infallible> {
     };
 
     Ok(Response::new(Body::from(page)))
-}
-
-async fn handle_static_file(path: &str) -> Result<Response<Body>, Infallible> {
-    println!("->> HANDLER - handle_static_file");
-
-    let mut file_path = PathBuf::from("./pages");
-    file_path.push(path);
-
-    match read(&file_path) {
-        Ok(content) => {
-            let mime_type = if path.ends_with(".css") {
-                "text/css"
-            } else {
-                "text/plain"
-            };
-
-            Ok(Response::builder()
-                .status(StatusCode::OK)
-                .header("Content-Type", mime_type)
-                .body(Body::from(content))
-                .unwrap())
-        }
-        Err(_) => Ok(bad_request("Failed to load css")),
-    }
 }
 
 async fn main_page_get() -> Result<Response<Body>, Infallible> {
@@ -401,27 +333,4 @@ async fn register_page_post(
         .body(Body::empty())
         .unwrap();
     Ok(respone)
-}
-
-async fn extract_from_request<T: Extractable>(body: Body) -> Result<T, Response<Body>> {
-    let body_in_bytes = to_bytes(body).await.map_err(|err| {
-        //handle error
-        println!("->> Error in parsing request body {}", err);
-
-        bad_request("Could not parse body to bytes")
-    })?;
-
-    serde_json::from_slice(&body_in_bytes).map_err(|err| {
-        //handle error
-        println!("->> Error in parsing json {}", err);
-        bad_request("Could not parse bytes to Extractable struct")
-    })
-}
-
-fn bad_request(msg: &str) -> Response<Body> {
-    Response::builder()
-        .status(StatusCode::BAD_REQUEST)
-        .header("Content-Type", "text/plain")
-        .body(Body::from(msg.to_string()))
-        .unwrap()
 }
