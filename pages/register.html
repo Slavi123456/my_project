@@ -10,16 +10,44 @@
     <div class="container registration">
             <h2>Register</h2>
             
-            <form action= "/register" method= POST >
+            <form action= "/register" method= POST onsubmit="submitRegister(event)">
                 
-                <input type="text" name="first_name" placeholder="Enter your first name" required>
-                <input type="text" name="last_name" placeholder="Enter your last name" required>
-                <input type="email" name="email" placeholder="Enter your email" required>
-                <input type="password" name="password" placeholder="Enter your password" required>
+                <input id="first_name" type="text" name="first_name" placeholder="Enter your first name" required>
+                <input id="last_name" type="text" name="last_name" placeholder="Enter your last name" required>
+                <input id="email" type="email" name="email" placeholder="Enter your email" required>
+                <input id="password" type="password" name="password" placeholder="Enter your password" required>
 
                 <button type="submit">Register</button>
             </form>
     </div>
+
+    <script>
+        async function submitRegister(event) {
+            event.preventDefault();
+
+            const first_name = document.getElementById('first_name').value;
+            const last_name = document.getElementById('last_name').value;
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            const response = await fetch('/register', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ first_name, last_name, email, password })
+            });
+
+            if (response.status === 302 || response.redirected) {
+                window.location.href = "/login";
+            } else {
+                const result = await response.text();
+                console.log(result);
+            }
+
+        }
+
+    </script>
 </body>
 </html>
 

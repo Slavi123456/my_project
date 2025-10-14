@@ -1,9 +1,4 @@
-use std::{
-    convert::Infallible,
-    fs::{self, read},
-    net::SocketAddr,
-    path::PathBuf,
-};
+use std::{convert::Infallible, fs::read, net::SocketAddr, path::PathBuf};
 
 use hyper::{
     Body, Method, Request, Response, Server, StatusCode,
@@ -59,14 +54,16 @@ async fn main_service(
     match (req_method, req_path) {
         (&Method::GET, "/") => main_page_get().await,
         (&Method::GET, "/home") => page_get("home.html").await,
-        (&Method::POST, "/home") => home_page_post(request, users_list).await,
         (&Method::PUT, req_path) if req_path.starts_with("/home/") => {
             home_page_put(request, users_list).await
         }
         (&Method::GET, "/login") => page_get("login.html").await,
         (&Method::POST, "/login") => login_page_post(request, users_list).await,
+
         (&Method::DELETE, "/logout") => logout_page_delete(request, users_list).await,
+
         (&Method::GET, "/register") => page_get("register.html").await,
+        (&Method::POST, "/register") => register_page_post(request, users_list).await,
 
         (&Method::GET, "/loginPageStyle.css") => handle_static_file("loginPageStyle.css").await,
 
@@ -185,8 +182,9 @@ async fn login_page_post(
 
                 // return Ok(Response::new(Body::from("Already logged in")));
                 let response = Response::builder()
-                    .status(StatusCode::OK)
+                    .status(StatusCode::FOUND)
                     .header(SET_COOKIE, HeaderValue::from_str(&session_id).unwrap())
+                    .header(LOCATION, "/home")
                     .body(Body::from("Already logged in"))
                     .unwrap();
 
@@ -208,27 +206,27 @@ async fn login_page_post(
     };
 
     //Create a session for succesful login
-    match users_list.find_user(login).await {
+    let cookie = match users_list.find_user(login).await {
         Ok(user_id) => match users_list.add_session(user_id).await {
             Ok(session) => {
                 let session_id = session.session_id();
-                let cookie = format!("session_id={}; HttpOnly; Path=/", session_id);
-
-                let response = Response::builder()
-                    .status(StatusCode::OK)
-                    .header(SET_COOKIE, HeaderValue::from_str(&cookie).unwrap())
-                    .body(Body::from("Successfully logged in"))
-                    .unwrap();
-
                 users_list.print_sessions().await;
-
-                return Ok(response);
+                &format!("session_id={}; HttpOnly; Path=/", session_id)
             }
             Err(err_msg) => return Ok(bad_request(&err_msg)),
         },
         Err(err_msg) => return Ok(bad_request(&err_msg)),
-    }
+    };
 
+    //Create response with the cookie and the redirecting to the home page
+    let response = Response::builder()
+        .status(StatusCode::FOUND)
+        .header(SET_COOKIE, HeaderValue::from_str(cookie).unwrap())
+        .header(LOCATION, "/home")
+        .body(Body::from("Successfully logged in"))
+        .unwrap();
+
+    Ok(response)
     // Ok(Response::new(Body::from("Successfully logged in")))
 }
 fn extract_session_id(cookie_str: &str) -> Option<String> {
@@ -275,7 +273,7 @@ async fn home_page_put(
     Ok(Response::new(Body::from("Succesful updated user")))
 }
 
-async fn home_page_post(
+async fn register_page_post(
     request: Request<Body>,
     users_list: AppState,
 ) -> Result<Response<Body>, Infallible> {
@@ -296,9 +294,15 @@ async fn home_page_post(
     }
     users_list.print_users().await;
 
-    Ok(Response::new(Body::from(
-        "Successfully parsed post request",
-    )))
+    // Ok(Response::new(Body::from("Successfully registered")))
+
+    //Transfer to the login page
+    let respone = Response::builder()
+        .status(StatusCode::FOUND)
+        .header(LOCATION, "/login")
+        .body(Body::empty())
+        .unwrap();
+    Ok(respone)
 }
 
 async fn extract_from_request<T: Extractable>(body: Body) -> Result<T, Response<Body>> {
@@ -306,13 +310,13 @@ async fn extract_from_request<T: Extractable>(body: Body) -> Result<T, Response<
         //handle error
         println!("->> Error in parsing request body {}", err);
 
-        bad_request("Could not parse request body")
+        bad_request("Could not parse body to bytes")
     })?;
 
     serde_json::from_slice(&body_in_bytes).map_err(|err| {
         //handle error
         println!("->> Error in parsing json {}", err);
-        bad_request("Could not parse request body")
+        bad_request("Could not parse bytes to Extractable struct")
     })
 }
 

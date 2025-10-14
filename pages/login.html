@@ -10,15 +10,40 @@
     <div class="container">
         <h2>Login</h2>
 
-        <form action="/login" method="POST">
-            <input type="email" name="email" placeholder="Enter your email" required>
-            <input type="password" name="password" placeholder="Enter your password" required>
+        <form action="/login" method="POST" onsubmit="submitLogin(event)">
+            <input id="email" type="email" name="email" placeholder="Enter your email" required>
+            <input id="password" type="password" name="password" placeholder="Enter your password" required>
             <button type="submit">Login</button>
         </form>
 
         <button class="button" onclick="window.location.href='/register'">Register</button>
             
     </div>
+
+    <script>
+        async function submitLogin(event) {
+            event.preventDefault();
+
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            const response = await fetch('/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ email, password })
+            });
+
+            if (response.status === 302 || response.redirected) {
+                window.location.href = "/home";
+            } else {
+                const result = await response.text();
+                console.log(result);
+            }
+        }
+
+    </script>
 </body>
 </html>
 
