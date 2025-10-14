@@ -1,9 +1,9 @@
 use std::{convert::Infallible, fs::read, net::SocketAddr, path::PathBuf};
 
 use hyper::{
-    Body, Method, Request, Response, Server, StatusCode,
+    Body, HeaderMap, Method, Request, Response, Server, StatusCode,
     body::to_bytes,
-    header::{COOKIE, HeaderValue, LOCATION, SET_COOKIE},
+    header::{CONTENT_TYPE, COOKIE, HeaderValue, LOCATION, SET_COOKIE},
     service::{make_service_fn, service_fn},
 };
 use tokio::fs::read_to_string;
@@ -54,9 +54,9 @@ async fn main_service(
     match (req_method, req_path) {
         (&Method::GET, "/") => main_page_get().await,
         (&Method::GET, "/home") => page_get("home.html").await,
-        (&Method::PUT, req_path) if req_path.starts_with("/home/") => {
-            home_page_put(request, users_list).await
-        }
+        // (&Method::PUT, req_path) if req_path.starts_with("/home/") => {
+        //     home_page_put(request, users_list).await
+        // }
         (&Method::GET, "/login") => page_get("login.html").await,
         (&Method::POST, "/login") => login_page_post(request, users_list).await,
 
@@ -65,11 +65,69 @@ async fn main_service(
         (&Method::GET, "/register") => page_get("register.html").await,
         (&Method::POST, "/register") => register_page_post(request, users_list).await,
 
+        (&Method::GET, "/profile") => page_get("profile.html").await,
+        (&Method::PUT, "/profile") => profile_page_put(request, users_list).await,
+
+        (&Method::GET, "/profile/user") => load_user_data(request, users_list).await,
         (&Method::GET, "/loginPageStyle.css") => handle_static_file("loginPageStyle.css").await,
 
         _ => Ok(Response::new(Body::from("404 Not Found"))),
     }
 }
+async fn load_user_data(
+    request: Request<Body>,
+    users_list: AppState,
+) -> Result<Response<Body>, Infallible> {
+    println!("->> HANDLER - load_user_data");
+
+    let (parts, _body) = request.into_parts();
+
+    let session_id = match extract_session_id_from_header(&parts.headers) {
+        Ok(id) => id,
+        Err(err) => {
+            return Ok(err);
+        }
+    };
+    //Validate the session if not return to the login page
+    if !users_list.is_session_valid(&session_id).await {
+        let cookie = format!("session_id=; HttpOnly; Path=/; Max-Age=0");
+        let response = Response::builder()
+            .status(StatusCode::FOUND)
+            .header(SET_COOKIE, HeaderValue::from_str(&cookie).unwrap())
+            .header(LOCATION, "/login")
+            .body(Body::from("Invalid session"))
+            .unwrap();
+
+        return Ok(response);
+    }
+
+    //get User profile from session id
+    let user_profile = match users_list
+        .get_user_profile_from_session_id(&session_id)
+        .await
+    {
+        Ok(profile) => profile,
+        Err(err) => return Ok(bad_request(&err)),
+    };
+
+    //Make json
+    let profile_json = match serde_json::to_string(&user_profile) {
+        Ok(json) => json,
+        Err(err) => {
+            println!("Error in parsing UserProfile to json");
+            return Ok(bad_request(&err.to_string()));
+        }
+    };
+
+    let response = Response::builder()
+        .status(StatusCode::OK)
+        .header(CONTENT_TYPE, "application/json")
+        .body(Body::from(profile_json))
+        .unwrap();
+
+    Ok(response)
+}
+
 async fn page_get(page: &str) -> Result<Response<Body>, Infallible> {
     println!("->> HANDLER - get_page - {}", page);
 
@@ -130,35 +188,23 @@ async fn logout_page_delete(
     let (parts, body) = request.into_parts();
 
     //Checking for already existing session
-    let header = parts.headers.get(COOKIE);
+    let session_id = match extract_session_id_from_header(&parts.headers) {
+        Ok(id) => id,
+        Err(error) => return Ok(error),
+    };
 
-    if let Some(cookie_header) = header {
-        if let Ok(cookie_str) = cookie_header.to_str() {
-            // Extract session_id from the cookie string
-            if let Some(session_id) = extract_session_id(cookie_str) {
-                println!("->> Session ID found: {}", session_id);
+    users_list.delete_session(&session_id).await;
+    users_list.print_sessions().await;
 
-                users_list.delete_session(&session_id).await;
-                users_list.print_sessions().await;
+    let cookie = format!("session_id=; HttpOnly; Path=/; Max-Age=0");
 
-                let cookie = format!("session_id=; HttpOnly; Path=/; Max-Age=0");
+    let resp = Response::builder()
+        .status(StatusCode::OK)
+        .header(SET_COOKIE, HeaderValue::from_str(&cookie).unwrap())
+        .body(Body::from("Successfully logged in"))
+        .unwrap();
 
-                let response = Response::builder()
-                    .status(StatusCode::OK)
-                    .header(SET_COOKIE, HeaderValue::from_str(&cookie).unwrap())
-                    .body(Body::from("Successfully logged in"))
-                    .unwrap();
-
-                return Ok(response);
-            } else {
-                return Ok(bad_request("No session ID in cookie"));
-            }
-        } else {
-            return Ok(bad_request("Invalid cookie header"));
-        }
-    }
-
-    return Ok(bad_request("No cookie found"));
+    Ok(resp)
 }
 
 async fn login_page_post(
@@ -170,33 +216,35 @@ async fn login_page_post(
     let (parts, body) = request.into_parts();
 
     //Checking for already existing session
-    let header = parts.headers.get(COOKIE);
+    if let Ok(session_id) = extract_session_id_from_header(&parts.headers) {
+        println!("->> Session ID found: {}", session_id);
 
-    if let Some(cookie_header) = header {
-        if let Ok(cookie_str) = cookie_header.to_str() {
-            // Extract session_id from the cookie string
-            if let Some(session_id) = extract_session_id(cookie_str) {
-                println!("->> Session ID found: {}", session_id);
+        //Validate the session if not return to the login page
+        if !users_list.is_session_valid(&session_id).await {
+            let cookie = format!("session_id=; HttpOnly; Path=/; Max-Age=0");
+            let response = Response::builder()
+                .status(StatusCode::FOUND)
+                .header(SET_COOKIE, HeaderValue::from_str(&cookie).unwrap())
+                .header(LOCATION, "/login")
+                .body(Body::from("Invalid session"))
+                .unwrap();
 
-                //validate the session_id
-
-                // return Ok(Response::new(Body::from("Already logged in")));
-                let response = Response::builder()
-                    .status(StatusCode::FOUND)
-                    .header(SET_COOKIE, HeaderValue::from_str(&session_id).unwrap())
-                    .header(LOCATION, "/home")
-                    .body(Body::from("Already logged in"))
-                    .unwrap();
-
-                users_list.print_sessions().await;
-
-                return Ok(response);
-            } else {
-                //return Ok(bad_request("No session ID in cookie"));
-            }
-        } else {
-            return Ok(bad_request("Invalid cookie header"));
+            return Ok(response);
         }
+
+        //Transfer the user to he home page
+        let response = Response::builder()
+            .status(StatusCode::FOUND)
+            .header(SET_COOKIE, HeaderValue::from_str(&session_id).unwrap())
+            .header(LOCATION, "/home")
+            .body(Body::from("Already logged in"))
+            .unwrap();
+
+        users_list.print_sessions().await;
+
+        return Ok(response);
+    } else {
+        //Some kind of an error
     }
 
     //Extracting loginInfo
@@ -229,7 +277,26 @@ async fn login_page_post(
     Ok(response)
     // Ok(Response::new(Body::from("Successfully logged in")))
 }
-fn extract_session_id(cookie_str: &str) -> Option<String> {
+
+fn extract_session_id_from_header(header: &HeaderMap) -> Result<String, Response<Body>> {
+    if let Some(cookie_header) = header.get(COOKIE) {
+        if let Ok(cookie_str) = cookie_header.to_str() {
+            // Extract session_id from the cookie string
+            if let Some(session_id) = extract_session_id_from_cookie(cookie_str) {
+                println!("->> Session ID found: {}", session_id);
+
+                Ok(session_id)
+            } else {
+                return Err(bad_request("No session ID in cookie"));
+            }
+        } else {
+            return Err(bad_request("Invalid cookie header"));
+        }
+    } else {
+        return Err(bad_request("No cookie found"));
+    }
+}
+fn extract_session_id_from_cookie(cookie_str: &str) -> Option<String> {
     for part in cookie_str.split(';') {
         let trimmed = part.trim();
         if let Some(session_id) = trimmed.strip_prefix("session_id=") {
@@ -239,15 +306,39 @@ fn extract_session_id(cookie_str: &str) -> Option<String> {
     None
 }
 
-async fn home_page_put(
+async fn profile_page_put(
     request: Request<Body>,
     users_list: AppState,
 ) -> Result<Response<Body>, Infallible> {
     println!("->> HANDLER - home_page_put");
 
-    let (path, body) = request.into_parts();
-    let path_segments = path.uri.path().split("/").collect::<Vec<&str>>();
+    let (parts, body) = request.into_parts();
+    // let path_segments = path.uri.path().split("/").collect::<Vec<&str>>();
     //println!("{:?}", path_segments);
+
+    //Checking for existing session
+    let session_id = match extract_session_id_from_header(&parts.headers) {
+        Ok(id) => id,
+        Err(error) => return Ok(error),
+    };
+    //Validate the session if not return to the login page
+    if !users_list.is_session_valid(&session_id).await {
+        let cookie = format!("session_id=; HttpOnly; Path=/; Max-Age=0");
+        let response = Response::builder()
+            .status(StatusCode::FOUND)
+            .header(SET_COOKIE, HeaderValue::from_str(&cookie).unwrap())
+            .header(LOCATION, "/login")
+            .body(Body::from("Invalid session"))
+            .unwrap();
+
+        return Ok(response);
+    }
+
+    //Get the user id from the session
+    let user_id = match users_list.get_user_id_from_session(&session_id).await {
+        Ok(id) => id,
+        Err(error) => return Ok(bad_request(&error)),
+    };
 
     //Reading the request body
     let user: User = match extract_from_request(body).await {
@@ -261,16 +352,21 @@ async fn home_page_put(
     }
 
     //Updating the user
-    if let Err(err_msg) = users_list
-        .update_user(user, path_segments[2].parse::<usize>().unwrap())
-        .await
-    {
+    if let Err(err_msg) = users_list.update_user(user, user_id).await {
         return Ok(bad_request(&err_msg));
     }
 
     users_list.print_users().await;
 
-    Ok(Response::new(Body::from("Succesful updated user")))
+    //transfer to the home page
+    let respone = Response::builder()
+        .status(StatusCode::FOUND)
+        .header(LOCATION, "/login")
+        .body(Body::from("Succesful updated user"))
+        .unwrap();
+
+    Ok(respone)
+    // Ok(Response::new(Body::from("Succesful updated user")))
 }
 
 async fn register_page_post(

@@ -1,6 +1,6 @@
 use std::{fmt::Display, sync::Arc};
 
-use serde::{Deserialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sqlx::MySqlPool;
 use tokio::sync::Mutex;
 ////////////////////////////////////////////////////////////////////
@@ -25,6 +25,10 @@ impl StoredUser {
             id: id,
             base: User::copy(base),
         }
+    }
+
+    pub fn get_user_profile(&self) -> UserProfile{
+        self.base.get_user_profile()
     }
 }
 
@@ -63,18 +67,22 @@ impl User {
         //Simple validation
 
         if self.first_name.trim().len() < 2 {
+            println!("First Name is {}", self.first_name);
             return Err("First name must be at least 2 characters long.".into());
         }
 
         if self.last_name.trim().len() < 2 {
+            println!("Last Name is {}", self.last_name);
             return Err("Last name must be at least 2 characters long.".into());
         }
 
         if !self.email.contains('@') || !self.email.contains('.') {
+            println!("Email is {}", self.email);
             return Err("Email must be valid (contain @ and .)".into());
         }
 
         if self.password.len() < 8 {
+            println!("Password is {}", self.password);
             return Err("Password must be at least 8 characters long.".into());
         }
 
@@ -83,6 +91,10 @@ impl User {
 
     pub fn match_credentials(&self, login: &LoginInfo) -> bool {
         self.email == login.email && self.password == login.password
+    }
+
+    pub fn get_user_profile(&self) -> UserProfile {
+        UserProfile { first_name: self.first_name.clone(), last_name: self.last_name.clone(), email: self.email.clone() }
     }
 }
 
@@ -98,6 +110,12 @@ impl Display for User {
 
 impl Extractable for User {}
 
+#[derive(Serialize)]
+pub struct UserProfile {
+    first_name: String,
+    last_name: String,
+    email: String,
+}
 ////////////////////////////////////////////////////////////////////
 
 #[derive(Clone)]
@@ -271,7 +289,6 @@ impl AppState {
             println!("{}", user)
         }
     }
-
     pub async fn find_user(&self, login: LoginInfo) -> Result<usize, String> {
         println!("->> HANDLER - find_user");
 
@@ -284,8 +301,46 @@ impl AppState {
             return Err(format!("->> Error - User not found."));
         }
     }
+    pub async fn get_user_id_from_session (&self, target_session: &str) -> Result<usize, String> {
+        let sessions = self.sessions.lock().await;
 
+        let session = sessions.iter().find(|sess| sess.session_id == target_session);
+        let target_user_id = match session {
+            Some(sess) => sess.user_id,
+            None => return Err("Session is invalid".to_string()),
+        };
+
+        Ok(target_user_id)
+    }
+    pub async fn get_user_profile_from_session_id (&self, target_session: &str) -> Result<UserProfile, String>{
+        let sessions = self.sessions.lock().await;
+
+        let session = sessions.iter().find(|sess| sess.session_id == target_session);
+        
+        //I will do it here again to avoid dead locks
+        let target_user_id = match session {
+            Some(sess) => sess.user_id,
+            None => return Err("Session is invalid".to_string()),
+        };
+
+        //Select query from the database later on
+        let users = self.users.lock().await;
+        let user = users.iter().find(|stored| stored.id == target_user_id);
+        let user_profile = match user {
+            Some(u) => u.get_user_profile(),
+            None => return Err("User not found".to_string()),
+        };
+
+        Ok(user_profile)
+    }
     ///////////////////////////////////////////////////////////////////////
+    pub async fn is_session_valid(&self, target_session: &str) -> bool {
+        let sessions = self.sessions.lock().await;
+        match sessions.iter().find(|sess| sess.session_id == target_session) {
+            Some(_session) => return true,
+            None => return false,
+        }
+    }
     pub async fn add_session(&self, user_id: usize) -> Result<Session, String> {
         println!("->> HANDLER - add_session");
 
@@ -296,7 +351,6 @@ impl AppState {
         sessions.push(new_session.clone());
         Ok(new_session)
     }
-
     pub async fn print_sessions(&self) {
         println!("->> HANDLER - print_sessions");
         let sessions = self.sessions.lock().await;
@@ -304,7 +358,6 @@ impl AppState {
             println!("{}", ses);
         }
     }
-
     pub async fn delete_session(&mut self, target_session: &str) {
         println!("->> HANDLER - delete_session");
         let mut sessions = self.sessions.lock().await;
