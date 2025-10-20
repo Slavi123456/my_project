@@ -1,32 +1,25 @@
-use hyper::{Body, HeaderMap, Response, header::COOKIE};
+use hyper::{Body, HeaderMap, Response, header};
 
-use crate::utils::bad_request;
+use crate::{structs::Constants, utils::response_bad_request};
 
 pub fn extract_session_id_from_header(header: &HeaderMap) -> Result<String, Response<Body>> {
-    if let Some(cookie_header) = header.get(COOKIE) {
-        if let Ok(cookie_str) = cookie_header.to_str() {
-            // Extract session_id from the cookie string
-            if let Some(session_id) = extract_session_id_from_cookie(cookie_str) {
-                println!("->> Session ID found: {}", session_id);
+    let Some(cookie_header) = header.get(header::COOKIE) else {
+        return Err(response_bad_request("No cookie found"));
+    };
 
-                Ok(session_id)
-            } else {
-                return Err(bad_request("No session ID in cookie"));
-            }
-        } else {
-            return Err(bad_request("Invalid cookie header"));
-        }
-    } else {
-        return Err(bad_request("No cookie found"));
-    }
+    let Ok(cookie_str) = cookie_header.to_str() else {
+        return Err(response_bad_request("Invalid cookie header"));
+    };
+
+    let Some(session_id) = extract_session_id_from_cookie(cookie_str) else {
+        return Err(response_bad_request("No session ID in cookie"));
+    };
+    Ok(session_id)
 }
 
 fn extract_session_id_from_cookie(cookie_str: &str) -> Option<String> {
-    for part in cookie_str.split(';') {
-        let trimmed = part.trim();
-        if let Some(session_id) = trimmed.strip_prefix("session_id=") {
-            return Some(session_id.to_string());
-        }
-    }
-    None
+    cookie_str
+        .split(';')
+        .map(str::trim)
+        .find_map(|el| el.strip_prefix(Constants::SESSION_ID_KEY).map(String::from))
 }

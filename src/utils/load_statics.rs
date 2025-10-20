@@ -2,7 +2,7 @@ use std::{convert::Infallible, fs::read, path::PathBuf};
 
 use hyper::{Body, Response, StatusCode};
 
-use crate::utils::bad_request;
+use crate::utils::response_bad_request;
 
 pub async fn handle_static_file(path: &str) -> Result<Response<Body>, Infallible> {
     println!("->> HANDLER - handle_static_file");
@@ -24,6 +24,6 @@ pub async fn handle_static_file(path: &str) -> Result<Response<Body>, Infallible
                 .body(Body::from(content))
                 .unwrap())
         }
-        Err(_) => Ok(bad_request("Failed to load css")),
+        Err(_) => Ok(response_bad_request("Failed to load css")),
     }
 }

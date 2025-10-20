@@ -4,14 +4,14 @@ use hyper::{Body, Request, Response, StatusCode, header::LOCATION};
 
 use crate::{
     structs::{app_state::AppState, user::User},
-    utils::{bad_request, extract_from_request},
+    utils::{extract_from_request, response_bad_request},
 };
 
-pub async fn register_page_post(
+pub async fn handle_post_register(
     request: Request<Body>,
     users_list: AppState,
 ) -> Result<Response<Body>, Infallible> {
-    println!("->> HANDLER - home_page_post");
+    println!("->> HANDLER - handle_post_register");
 
     let user: User = match extract_from_request(request.into_body()).await {
         Ok(u) => u,
@@ -20,15 +20,13 @@ pub async fn register_page_post(
 
     //Validation
     if let Err(err_msg) = user.validate() {
-        return Ok(bad_request(&err_msg));
+        return Ok(response_bad_request(&err_msg));
     }
     //Saving the user information
     if let Err(err) = users_list.add_user(user).await {
-        return Ok(bad_request(&format!("{}", err)));
+        return Ok(response_bad_request(&format!("{}", err)));
     }
     users_list.print_users().await;
-
-    // Ok(Response::new(Body::from("Successfully registered")))
 
     //Transfer to the login page
     let respone = Response::builder()

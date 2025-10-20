@@ -7,7 +7,7 @@ use hyper::{
 
 use crate::{
     structs::{app_state::AppState, user::UserProfile},
-    utils::{bad_request, extract_session_id_from_header},
+    utils::{extract_session_id_from_header, response_bad_request},
 };
 
 pub async fn load_user_data(
@@ -43,7 +43,7 @@ pub async fn load_user_data(
         .await
     {
         Ok(profile) => profile,
-        Err(err) => return Ok(bad_request(&err)),
+        Err(err) => return Ok(response_bad_request(&err)),
     };
 
     //Make json
@@ -51,7 +51,7 @@ pub async fn load_user_data(
         Ok(json) => json,
         Err(err) => {
             println!("Error in parsing UserProfile to json");
-            return Ok(bad_request(&err.to_string()));
+            return Ok(response_bad_request(&err.to_string()));
         }
     };
 

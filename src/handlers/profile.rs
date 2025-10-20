@@ -7,10 +7,10 @@ use hyper::{
 
 use crate::{
     structs::{app_state::AppState, user::User},
-    utils::{bad_request, extract_from_request, extract_session_id_from_header},
+    utils::{extract_from_request, extract_session_id_from_header, response_bad_request},
 };
 
-pub async fn profile_page_put(
+pub async fn handle_put_profile(
     request: Request<Body>,
     users_list: AppState,
 ) -> Result<Response<Body>, Infallible> {
@@ -41,7 +41,7 @@ pub async fn profile_page_put(
     //Get the user id from the session
     let user_id = match users_list.get_user_id_from_session(&session_id).await {
         Ok(id) => id,
-        Err(error) => return Ok(bad_request(&error)),
+        Err(error) => return Ok(response_bad_request(&error)),
     };
 
     //Reading the request body
@@ -52,12 +52,12 @@ pub async fn profile_page_put(
 
     //Validation
     if let Err(err_msg) = user.validate() {
-        return Ok(bad_request(&err_msg));
+        return Ok(response_bad_request(&err_msg));
     }
 
     //Updating the user
     if let Err(err_msg) = users_list.update_user(user, user_id).await {
-        return Ok(bad_request(&err_msg));
+        return Ok(response_bad_request(&err_msg));
     }
 
     users_list.print_users().await;

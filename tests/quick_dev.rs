@@ -9,9 +9,12 @@ use hyper::{
 #[tokio::test]
 async fn quick_dev() -> Result<()> {
     let client = Client::new();
+
+    ////////////////////////////////////////
     //Get request for the home page
     // send_get("/home", &client).await?;
 
+    ////////////////////////////////////////
     //Post request for the home page
     let data = r#"
         {
@@ -24,6 +27,7 @@ async fn quick_dev() -> Result<()> {
     send_post("/home", &client, data, None).await?;
     // send_post("/home", &client, data).await?;
 
+    ////////////////////////////////////////
     //Put request for the home page
     let put_data = r#"
         {
@@ -35,6 +39,7 @@ async fn quick_dev() -> Result<()> {
 
     send_put("/home/0", &client, put_data).await?;
 
+    ////////////////////////////////////////
     //Send post request for login
     // let login_data = r#"
     // {
@@ -43,9 +48,11 @@ async fn quick_dev() -> Result<()> {
     // }"#;
     // send_post("/login", &client, login_data, None).await?;
 
+    ////////////////////////////////////////
     //Checking if the cookie works
     // send_post("/login", &client, login_data, Some("0")).await?;
 
+    ////////////////////////////////////////
     //Sending delete request
     // send_delete("/logout", &client, Some("0")).await?;
 
