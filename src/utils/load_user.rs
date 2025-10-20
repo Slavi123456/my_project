@@ -1,18 +1,19 @@
 use std::convert::Infallible;
 
-use hyper::{
-    Body, Request, Response, StatusCode,
-    header::{CONTENT_TYPE, HeaderValue, LOCATION, SET_COOKIE},
-};
+use hyper::{Body, Request, Response};
 
 use crate::{
-    structs::{app_state::AppState, user::UserProfile},
-    utils::{extract_session_id_from_header, response_bad_request},
+    structs::{Routes, app_state::AppState, user::UserProfile},
+    utils::{
+        extract_session_id_from_header,
+        response::{redirect_with_cookie, response_with_json},
+        response_bad_request,
+    },
 };
 
 pub async fn load_user_data(
     request: Request<Body>,
-    users_list: AppState,
+    app_state: AppState,
 ) -> Result<Response<Body>, Infallible> {
     println!("->> HANDLER - load_user_data");
 
@@ -25,20 +26,14 @@ pub async fn load_user_data(
         }
     };
     //Validate the session if not return to the login page
-    if !users_list.is_session_valid(&session_id).await {
+    if !app_state.is_session_valid(&session_id).await {
         let cookie = format!("session_id=; HttpOnly; Path=/; Max-Age=0");
-        let response = Response::builder()
-            .status(StatusCode::FOUND)
-            .header(SET_COOKIE, HeaderValue::from_str(&cookie).unwrap())
-            .header(LOCATION, "/login")
-            .body(Body::from("Invalid session"))
-            .unwrap();
-
+        let response = redirect_with_cookie(&cookie, Routes::LOGIN, "Invalid session");
         return Ok(response);
     }
 
     //get User profile from session id
-    let user_profile: UserProfile = match users_list
+    let user_profile: UserProfile = match app_state
         .get_user_profile_from_session_id(&session_id)
         .await
     {
@@ -55,11 +50,7 @@ pub async fn load_user_data(
         }
     };
 
-    let response = Response::builder()
-        .status(StatusCode::OK)
-        .header(CONTENT_TYPE, "application/json")
-        .body(Body::from(profile_json))
-        .unwrap();
+    let response = response_with_json(profile_json);
 
     Ok(response)
 }

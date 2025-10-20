@@ -1,19 +1,22 @@
 use std::convert::Infallible;
 
-use hyper::{Body, Request, Response, StatusCode, header::LOCATION};
+use hyper::{Body, Request, Response};
 
 use crate::{
-    structs::{app_state::AppState, user::User},
-    utils::{extract_from_request, response_bad_request},
+    structs::{Routes, app_state::AppState, user::User},
+    utils::{deserialize_json_body, response::redirect_without_cookie, response_bad_request},
 };
 
 pub async fn handle_post_register(
     request: Request<Body>,
-    users_list: AppState,
+    app_state: AppState,
 ) -> Result<Response<Body>, Infallible> {
     println!("->> HANDLER - handle_post_register");
 
-    let user: User = match extract_from_request(request.into_body()).await {
+    //Checking for already existing session
+
+    //Extract user
+    let user: User = match deserialize_json_body(request.into_body()).await {
         Ok(u) => u,
         Err(err) => return Ok(err),
     };
@@ -23,16 +26,13 @@ pub async fn handle_post_register(
         return Ok(response_bad_request(&err_msg));
     }
     //Saving the user information
-    if let Err(err) = users_list.add_user(user).await {
+    if let Err(err) = app_state.add_user(user).await {
         return Ok(response_bad_request(&format!("{}", err)));
     }
-    users_list.print_users().await;
+    app_state.print_users().await;
 
     //Transfer to the login page
-    let respone = Response::builder()
-        .status(StatusCode::FOUND)
-        .header(LOCATION, "/login")
-        .body(Body::empty())
-        .unwrap();
-    Ok(respone)
+    let response = redirect_without_cookie(Routes::LOGIN, "Succesfully registered!");
+
+    Ok(response)
 }

@@ -98,6 +98,8 @@ impl User {
         }
     }
     pub fn validate(&self) -> Result<(), String> {
+        //should make a validation for repeated users with one email
+
         //Simple validation
 
         if self.first_name.trim().len() < 2 {

@@ -80,7 +80,7 @@ async fn request_dispatcher(
         (&Method::PUT, Routes::PROFILE) => handle_put_profile(request, app_state).await,
 
         (&Method::GET, Routes::USER_PROFILE) => load_user_data(request, app_state).await,
-        (&Method::GET, Routes::PAGE_CSS_FILE) => handle_static_file(Pages::CSS_FILE).await,
+        (&Method::GET, Routes::PAGE_CSS_FILE) => handle_static_file(Pages::CSS_FILE),
 
         //this should be changed to other error
         _ => Ok(Response::new(Body::from("404 Not Found"))),

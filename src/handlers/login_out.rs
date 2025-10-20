@@ -1,14 +1,12 @@
 use std::convert::Infallible;
 
-use hyper::{
-    Body, Request, Response, StatusCode,
-    header::{HeaderValue, LOCATION, SET_COOKIE},
-};
+use hyper::{Body, Request, Response};
 
 use crate::{
+    handlers::sessions::handle_existing_session_in_login,
     structs::{Routes, app_state::AppState, login::LoginInfo},
     utils::{
-        extract_from_request, extract_session_id_from_header, response::redirect_with_cookie,
+        deserialize_json_body, extract_session_id_from_header, response::redirect_with_cookie,
         response_bad_request,
     },
 };
@@ -17,7 +15,7 @@ use crate::{
 
 pub async fn handle_delete_logout(
     request: Request<Body>,
-    mut users_list: AppState,
+    mut app_state: AppState,
 ) -> Result<Response<Body>, Infallible> {
     println!("->> HANDLER - handle_delete_logout");
 
@@ -29,20 +27,15 @@ pub async fn handle_delete_logout(
         Err(error) => return Ok(error),
     };
 
-    users_list.delete_session(&session_id).await;
-    users_list.print_sessions().await;
+    //Update App state
+    app_state.delete_session(&session_id).await;
+    app_state.print_sessions().await;
 
     //Transfer to the login page with expired cookie
     let cookie = format!("session_id=; HttpOnly; Path=/; Max-Age=0");
+    let response = redirect_with_cookie(&cookie, Routes::LOGIN, "Successfully logged out");
 
-    let resp = Response::builder()
-        .status(StatusCode::FOUND)
-        .header(LOCATION, "/login")
-        .header(SET_COOKIE, HeaderValue::from_str(&cookie).unwrap())
-        .body(Body::from("Successfully logged out"))
-        .unwrap();
-
-    Ok(resp)
+    Ok(response)
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -56,49 +49,38 @@ pub async fn handle_post_login(
     let (parts, body) = request.into_parts();
 
     //Checking for already existing session
-    if let Ok(session_id) = extract_session_id_from_header(&parts.headers) {
-        println!("->> Session ID found: {}", session_id);
+    let session_id = match extract_session_id_from_header(&parts.headers) {
+        Ok(id) => {
+            println!("->> Session ID found: {}", id);
 
-        //Validate the session if not return to the login page
-        if !app_state.is_session_valid(&session_id).await {
-            //If not expire the cookie and transfer to the login page
-            let cookie = format!("session_id=; HttpOnly; Path=/; Max-Age=0");
-            let response = redirect_with_cookie(&cookie, Routes::LOGIN, "Invalid session");
-
-            return Ok(response);
+            return handle_existing_session_in_login(&app_state, &id).await;
         }
-
-        //Transfer the user to he home page
-        let cookie = format!("session_id={}; HttpOnly; Path=/; Max-Age=0", session_id);
-        let response = redirect_with_cookie(&cookie, Routes::HOME, "Already logged in");
-        app_state.print_sessions().await;
-
-        return Ok(response);
-    } else {
-        //Some kind of an error
-    }
+        Err(err) => {
+            //Handle error
+        }
+    };
 
     //Extracting loginInfo
-    let login: LoginInfo = match extract_from_request(body).await {
+    let login: LoginInfo = match deserialize_json_body(body).await {
         Ok(u) => u,
         Err(err) => return Ok(err),
     };
 
-    //Create a session for succesful login
-    let cookie = match app_state.find_user(login).await {
-        Ok(user_id) => match app_state.add_session(user_id).await {
-            Ok(session) => {
-                let session_id = session.session_id();
-                app_state.print_sessions().await;
-                &format!("session_id={}; HttpOnly; Path=/", session_id)
-            }
-            Err(err_msg) => return Ok(response_bad_request(&err_msg)),
-        },
+    //Check for valid user
+    let user_id = match app_state.find_user(login).await {
+        Ok(id) => id,
         Err(err_msg) => return Ok(response_bad_request(&err_msg)),
     };
+    //Create session
+    let session = match app_state.add_session(user_id).await {
+        Ok(session) => session,
+        Err(err_msg) => return Ok(response_bad_request(&err_msg)),
+    };
+    app_state.print_sessions().await;
 
     //Create response with the cookie and the redirecting to the home page
-    let response = redirect_with_cookie(cookie, Routes::HOME, "Successfully logged in");
+    let cookie = format!("session_id={}; HttpOnly; Path=/", session.session_id());
+    let response = redirect_with_cookie(&cookie, Routes::HOME, "Successfully logged in");
 
     Ok(response)
 }

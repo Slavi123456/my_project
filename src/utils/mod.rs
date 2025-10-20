@@ -8,6 +8,6 @@ pub use load_statics::handle_static_file;
 pub use load_user::load_user_data;
 pub use response::response_bad_request;
 
-pub use request::extract_from_request;
+pub use request::deserialize_json_body;
 
 pub use cookie::extract_session_id_from_header;

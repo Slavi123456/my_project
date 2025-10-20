@@ -25,7 +25,7 @@ impl AppState {
             Err(error) => Err(error),
         }
     }
-    pub async fn new_without_db() -> Result<Self, sqlx::Error> {
+    pub fn new_without_db() -> Result<Self, sqlx::Error> {
         Ok(Self {
                 users: Arc::new(Mutex::new(Vec::new())),
                 sessions: Arc::new(Mutex::new(Vec::new())),
@@ -40,8 +40,6 @@ impl AppState {
         }
 
         let mut users = self.users.lock().await;
-
-        //should make a validation for repeated users with one email
 
         let users_len = users.len();
         let user_for_db = user.clone();
@@ -165,7 +163,7 @@ impl AppState {
 
         let session = sessions.iter().find(|sess| sess.session_id() == target_session);
         let target_user_id = match session {
-            Some(sess) => sess.user_id(),
+            Some(session) => session.user_id(),
             None => return Err("Session is invalid".to_string()),
         };
 
