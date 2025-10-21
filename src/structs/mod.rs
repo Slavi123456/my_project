@@ -12,4 +12,3 @@ pub use constants::Constants;
 pub use error::AppError;
 pub use pages::Pages;
 pub use routes::Routes;
-pub use user::User;

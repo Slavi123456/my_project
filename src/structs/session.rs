@@ -7,7 +7,7 @@ pub struct Session {
 }
 impl Session {
     pub fn new(session: String, user_id: usize) -> Result<Self, String> {
-        if !session.is_empty() {
+        if session.is_empty() {
             return Err(String::from("Invalid email"));
         }
         Ok(Self {

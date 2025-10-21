@@ -1,5 +1,8 @@
 use anyhow::Result;
-use my_project::structs::user::{StoredUser, User};
+use my_project::structs::user::{
+    StoredUser, User, UserProfile, validate_email, validate_name, validate_password,
+};
+use serde_json::json;
 
 #[tokio::test]
 async fn user_testing() -> Result<()> {
@@ -28,22 +31,33 @@ async fn user_testing() -> Result<()> {
     assert!(User::new("".into(), "Doan".into(), "invalid".into(), "1234".into()).is_err());
     ////////////////////////////////////////////////////////
     //Password's lenght should be >= 2
-    assert!(!User::validate_name(""));
-    assert!(!User::validate_name("j"));
-    assert!(User::validate_name("jo"));
-    assert!(User::validate_name("joan"));
+    assert!(!validate_name(""));
+    assert!(!validate_name("j"));
+    assert!(validate_name("jo"));
+    assert!(validate_name("joan"));
 
     //Email should not be empty and contain '@', '.'
-    assert!(!User::validate_email(""));
-    assert!(!User::validate_email("j"));
-    assert!(!User::validate_email("j@d"));
-    assert!(User::validate_email("j@d."));
+    assert!(!validate_email(""));
+    assert!(!validate_email("j"));
+    assert!(!validate_email("j@d"));
+    assert!(validate_email("j@d."));
 
     //Password's lenght should be >= 8
-    assert!(!User::validate_password(""));
-    assert!(!User::validate_password("j"));
-    assert!(User::validate_password("joan1234"));
+    assert!(!validate_password(""));
+    assert!(!validate_password("j"));
+    assert!(validate_password("joan1234"));
     ////////////////////////////////////////////////////////
+    let data = json!(
+    {
+        "first_name": "John",
+        "last_name": "Doe",
+        "email": "john@doe.com",
+        "password": "johnDoe123"
+    });
+    let parsed: User = serde_json::from_value(data).unwrap();
+    let user = User::new("John", "Doe", "john@doe.com", "johnDoe123").unwrap();
+    assert_eq!(parsed, user);
+
     Ok(())
 }
 
@@ -65,6 +79,24 @@ async fn stored_user() -> Result<()> {
     assert_eq!(profile.last_name(), "Doan");
     assert_eq!(profile.email(), "j@d.c");
     // /////////////////////////////////////////////////////////////
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn user_profile() -> Result<()> {
+    let profile = UserProfile::new("John", "Doe", "john@doe.com").unwrap();
+
+    let parsed = serde_json::to_value(profile).unwrap();
+
+    let data = json!(
+    {
+    "first_name": "John",
+    "last_name": "Doe",
+    "email": "john@doe.com",
+    });
+
+    assert_eq!(parsed, data);
 
     Ok(())
 }
