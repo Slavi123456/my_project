@@ -3,7 +3,7 @@ use std::sync::Arc;
 use sqlx::MySqlPool;
 use tokio::sync::Mutex;
 
-use crate::structs::{login::LoginInfo, session::Session, user::{StoredUser, User, UserProfile}};
+use crate::structs::{login::LoginInfo, session::Session, user::{StoredUser, User, UserProfile}, AppError};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -32,7 +32,7 @@ impl AppState {
                 db: None,
             })
     }
-    pub async fn add_user(&self, user: User) -> Result<(), sqlx::Error> {
+    pub async fn add_user(&self, user: User) -> Result<(), AppError> {
         println!("->> HANDLER - add_user");
 
         if let Err(err) = user.validate() {
@@ -43,7 +43,9 @@ impl AppState {
 
         let users_len = users.len();
         let user_for_db = user.clone();
-        users.push(StoredUser::new(users_len, user));
+
+        let new_stored_user = StoredUser::new(users_len, user).map_err(|err_msg| AppError::UserError(err_msg))?;
+        users.push(new_stored_user);
 
         //add user to the data base
         match &self.db {
@@ -60,7 +62,7 @@ impl AppState {
                 .await
                 .map_err(|e| {
                     println!("Error inserting user into DB: {}", e);
-                    e 
+                    e
                 })?;
             }
             None => {
@@ -204,7 +206,10 @@ impl AppState {
         let mut sessions = self.sessions.lock().await;
         let sessions_len = sessions.len();
 
-        let new_session = Session::new(sessions_len.to_string(), user_id);
+        let new_session = match Session::new(sessions_len.to_string(), user_id) {
+            Ok(session) => session,
+            Err(err_msg) => return Err(err_msg),
+        };
         sessions.push(new_session.clone());
         Ok(new_session)
     }

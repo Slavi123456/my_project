@@ -26,7 +26,8 @@ async fn main() {
     let _db_url = "mysql://root:rootpassword@localhost:3306/mydb";
 
     //There is also AppState::new_without_db() for trying withot the database saving
-    let app_state = match AppState::new(_db_url).await {
+    let app_state = match AppState::new_without_db() {
+        //new(_db_url).await {
         Ok(app_state) => app_state,
         Err(error) => {
             println!("->> Error building the AppState error {}", error);

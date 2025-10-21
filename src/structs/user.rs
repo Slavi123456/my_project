@@ -4,6 +4,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::structs::{login::LoginInfo, traits::Extractable};
 
+struct UserConsts {}
+impl UserConsts {
+    const MIN_NAME_LENGHT: usize = 2;
+    const MIN_PASSWORD_LENGHT: usize = 8;
+}
 ////////////////////////////////////////////////////////////////////
 pub struct StoredUser {
     id: usize,
@@ -11,11 +16,11 @@ pub struct StoredUser {
 }
 
 impl StoredUser {
-    pub fn new(id: usize, base: User) -> Self {
-        Self {
+    pub fn new(id: usize, base: User) -> Result<Self, String> {
+        Ok(Self {
             id: id,
-            base: User::copy(base),
-        }
+            base: base.clone(),
+        })
     }
 
     pub fn get_user_profile(&self) -> UserProfile {
@@ -49,21 +54,33 @@ pub struct User {
 }
 
 impl User {
-    // pub fn new(first_name: String, last_name: String, email: String, password: String) -> Self {
-    //     Self {
-    //         first_name,
-    //         last_name,
-    //         email,
-    //         password,
-    //     }
-    // }
-    pub fn copy_operator(&mut self, other: &User) {
-        self.set_email(other.email.clone());
-        self.set_first_name(other.first_name.clone());
-        self.set_last_name(other.last_name.clone());
-        self.set_password(other.password.clone());
+    ////////////////////////////////////////////////
+    //Constructors
+    pub fn new(
+        first_name: String,
+        last_name: String,
+        email: String,
+        password: String,
+    ) -> Result<Self, String> {
+        let user = User {
+            first_name,
+            last_name,
+            email,
+            password,
+        };
+        user.validate()?;
+        Ok(user)
+    }
+    pub fn copy_operator(&mut self, other: &User) -> Result<(), String> {
+        self.set_email(other.email.clone())?;
+        self.set_first_name(other.first_name.clone())?;
+        self.set_last_name(other.last_name.clone())?;
+        self.set_password(other.password.clone())?;
+        Ok(())
     }
 
+    ////////////////////////////////////////////////
+    //Getters and Setters
     pub fn email(&self) -> &str {
         &self.email
     }
@@ -76,55 +93,85 @@ impl User {
     pub fn password(&self) -> &str {
         &self.password
     }
-    pub fn set_email(&mut self, new_email: String) {
-        self.email = new_email;
-    }
-    pub fn set_first_name(&mut self, new_first_name: String) {
-        self.password = new_first_name;
-    }
-    pub fn set_last_name(&mut self, new_last_name: String) {
-        self.password = new_last_name;
-    }
-    pub fn set_password(&mut self, new_password: String) {
-        self.password = new_password;
-    }
-
-    pub fn copy(user: User) -> Self {
-        Self {
-            first_name: user.first_name,
-            last_name: user.last_name,
-            email: user.email,
-            password: user.password,
+    pub fn set_email(&mut self, new_email: String) -> Result<(), String> {
+        if User::validate_email(&new_email) {
+            return Err(String::from("Invalid email"));
         }
+        self.email = new_email;
+        Ok(())
     }
-    pub fn validate(&self) -> Result<(), String> {
-        //should make a validation for repeated users with one email
+    pub fn set_first_name(&mut self, new_first_name: String) -> Result<(), String> {
+        if User::validate_name(&new_first_name) {
+            return Err(String::from("Invalid email"));
+        }
+        self.first_name = new_first_name;
+        Ok(())
+    }
+    pub fn set_last_name(&mut self, new_last_name: String) -> Result<(), String> {
+        if User::validate_name(&new_last_name) {
+            return Err(String::from("Invalid email"));
+        }
+        self.last_name = new_last_name;
+        Ok(())
+    }
+    pub fn set_password(&mut self, new_password: String) -> Result<(), String> {
+        if User::validate_password(&new_password) {
+            return Err(String::from("Invalid email"));
+        }
+        self.password = new_password;
+        Ok(())
+    }
 
+    ////////////////////////////////////////////////
+
+    pub fn validate(&self) -> Result<(), String> {
         //Simple validation
 
-        if self.first_name.trim().len() < 2 {
+        if !User::validate_name(&self.first_name) {
             println!("First Name is {}", self.first_name);
-            return Err("First name must be at least 2 characters long.".into());
+            return Err(format!(
+                "First name must be at least {} characters long.",
+                UserConsts::MIN_NAME_LENGHT
+            ));
         }
 
-        if self.last_name.trim().len() < 2 {
+        if !User::validate_name(&self.last_name) {
             println!("Last Name is {}", self.last_name);
-            return Err("Last name must be at least 2 characters long.".into());
+
+            return Err(format!(
+                "Last name must be at least {} characters long.",
+                UserConsts::MIN_NAME_LENGHT
+            ));
         }
 
-        if !self.email.contains('@') || !self.email.contains('.') {
+        //should make a validation for repeated users with one email
+        if !User::validate_email(&self.email) {
             println!("Email is {}", self.email);
-            return Err("Email must be valid (contain @ and .)".into());
+            return Err(format!("Email must be valid (contain @ and .)"));
         }
 
-        if self.password.len() < 8 {
+        if !User::validate_password(&self.password) {
             println!("Password is {}", self.password);
-            return Err("Password must be at least 8 characters long.".into());
+            return Err(format!(
+                "Password must be at least {} characters long.",
+                UserConsts::MIN_PASSWORD_LENGHT
+            ));
         }
 
         Ok(())
     }
 
+    pub fn validate_email(new_email: &str) -> bool {
+        !new_email.is_empty() && new_email.contains('@') && new_email.contains('.')
+    }
+    pub fn validate_name(new_name: &str) -> bool {
+        !new_name.is_empty() && new_name.len() >= UserConsts::MIN_NAME_LENGHT
+    }
+    pub fn validate_password(new_password: &str) -> bool {
+        !new_password.is_empty() && new_password.len() >= UserConsts::MIN_PASSWORD_LENGHT
+    }
+
+    ////////////////////////////////////////////////
     pub fn match_credentials(&self, login: &LoginInfo) -> bool {
         self.email == login.email() && self.password == login.password()
     }
@@ -156,4 +203,16 @@ pub struct UserProfile {
     first_name: String,
     last_name: String,
     email: String,
+}
+
+impl UserProfile {
+    pub fn first_name(&self) -> &str {
+        &self.first_name
+    }
+    pub fn last_name(&self) -> &str {
+        &self.last_name
+    }
+    pub fn email(&self) -> &str {
+        &self.email
+    }
 }

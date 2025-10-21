@@ -6,11 +6,14 @@ pub struct Session {
     user_id: usize,
 }
 impl Session {
-    pub fn new(session: String, user_id: usize) -> Self {
-        Self {
-            session_id: session,
-            user_id: user_id,
+    pub fn new(session: String, user_id: usize) -> Result<Self, String> {
+        if !session.is_empty() {
+            return Err(String::from("Invalid email"));
         }
+        Ok(Self {
+            session_id: session.clone(),
+            user_id: user_id,
+        })
     }
 
     pub fn session_id(&self) -> &str {
