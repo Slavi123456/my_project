@@ -198,7 +198,7 @@ impl Display for User {
 impl Extractable for User {}
 
 ////////////////////////////////////////////////////////////////////
-#[derive(Serialize)]
+#[derive(Serialize, PartialEq, Eq, Debug)]
 pub struct UserProfile {
     first_name: String,
     last_name: String,

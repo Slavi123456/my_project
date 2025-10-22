@@ -21,6 +21,12 @@ impl LoginInfo {
             password: password.to_string(),
         })
     }
+    pub fn test_new_unchecked(email: &str, password: &str) -> Self {
+        Self {
+            email: email.to_string(),
+            password: password.to_string(),
+        }
+    }
     pub fn email(&self) -> &str {
         &self.email
     }

@@ -67,10 +67,10 @@ impl AppState {
             }
             None => {
                 println!("->>Error with accessing the db");
+                //print the user_count
+                self.print_db_user_count().await;
             }
         }
-        //print the user_count
-        self.print_db_user_count().await;
 
         Ok(())
     }
@@ -99,7 +99,7 @@ impl AppState {
         let mut users = self.users.lock().await;
         let user_for_db = updated_user.clone();
 
-        //needs something like operator= in c++
+        //Searching for target user to update
         if let Some(user) = users.iter_mut().find(|u| u.user_id() == target_id) {
             user.get_base_mut().copy_operator(&updated_user);
             println!("User updated.");
@@ -134,7 +134,10 @@ impl AppState {
 
         Ok(())
     }
-
+    pub async fn print_user_count(&self) -> usize {
+        let users = self.users.lock().await;
+        users.len()
+    }
     // pub async fn get_all_users(&self) -> Vec<User> {
     //     println!("->> HANDLER - get_all_users");
     //     let users = self.users.lock().await;
@@ -225,5 +228,9 @@ impl AppState {
         let mut sessions = self.sessions.lock().await;
 
         sessions.retain(|s| s.session_id() != target_session);
+    }
+    pub async fn print_session_count(&self) -> usize {
+        let sessions = self.sessions.lock().await;
+        sessions.len()
     }
 }
